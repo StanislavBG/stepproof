@@ -1,0 +1,34 @@
+# stepproof example: Single-step sentiment classifier
+# Tests that a model reliably classifies sentiment as positive/negative/neutral.
+#
+# Run: stepproof run examples/sentiment-classifier.yaml
+#
+# This scenario validates that your classifier:
+#   1. Returns a valid sentiment label
+#   2. Does not hallucinate non-existent categories
+#   3. Includes a confidence score
+
+name: "Sentiment Classifier Reliability"
+iterations: 10
+
+variables:
+  input: "I absolutely love this product! It exceeded all my expectations."
+
+steps:
+  - id: classify_sentiment
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    system: |
+      You are a sentiment classifier. Respond ONLY with a JSON object in this format:
+      {"sentiment": "positive|negative|neutral", "confidence": 0.0-1.0, "reason": "one sentence"}
+    prompt: "Classify the sentiment of this text: {{input}}"
+    min_pass_rate: 0.90
+    assertions:
+      - type: contains
+        value: '"sentiment"'
+      - type: contains
+        value: '"confidence"'
+      - type: not_contains
+        value: "uncertain"
+      - type: regex
+        value: '"sentiment":\s*"(positive|negative|neutral)"'

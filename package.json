@@ -1,0 +1,57 @@
+{
+  "name": "stepproof",
+  "version": "0.1.0",
+  "description": "Regression testing for multi-step AI workflows. Not observability — a CI gate.",
+  "main": "dist/cli.js",
+  "bin": {
+    "stepproof": "dist/cli.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist",
+    "schemas",
+    "README.md"
+  ],
+  "keywords": [
+    "ai",
+    "testing",
+    "regression",
+    "agents",
+    "llm",
+    "cli",
+    "openai",
+    "anthropic",
+    "ci"
+  ],
+  "author": "Bilko",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bilko/stepproof"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.37.0",
+    "ajv": "^8.17.1",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "js-yaml": "^4.1.0",
+    "openai": "^4.77.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.17.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

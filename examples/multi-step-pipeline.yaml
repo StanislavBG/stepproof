@@ -1,0 +1,67 @@
+# stepproof example: Multi-step pipeline with step output chaining
+# Simulates a real-world AI pipeline: extract intent → generate response → validate tone.
+#
+# Run: stepproof run examples/multi-step-pipeline.yaml
+#
+# This tests the FULL pipeline, catching regressions at each step individually.
+# Classic example: gpt-4o update breaks step 2 but step 3 passes. stepproof tells you exactly which step.
+#
+# Requires: ANTHROPIC_API_KEY
+
+name: "Customer Support Intent Pipeline"
+iterations: 10
+
+variables:
+  customer_message: "My order #12345 hasn't arrived after 2 weeks. I'm really frustrated."
+
+steps:
+  - id: extract_intent
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    system: |
+      You are an intent classifier for a customer support system.
+      Respond with a JSON object: {"intent": "...", "urgency": "low|medium|high", "entities": [...]}
+    prompt: "Classify the customer intent from this message: {{customer_message}}"
+    min_pass_rate: 0.90
+    assertions:
+      - type: contains
+        value: '"intent"'
+      - type: contains
+        value: '"urgency"'
+      - type: regex
+        value: '"urgency":\s*"(low|medium|high)"'
+
+  - id: generate_response
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    system: |
+      You are a helpful customer support agent. Be empathetic, professional, and solution-focused.
+      Keep responses under 100 words.
+    prompt: |
+      A customer sent this message: {{customer_message}}
+
+      Intent analysis: {{extract_intent.output}}
+
+      Write a helpful response to this customer.
+    min_pass_rate: 0.80
+    assertions:
+      - type: contains
+        value: "order"
+      - type: not_contains
+        value: "I cannot help"
+      - type: not_contains
+        value: "I don't know"
+
+  - id: validate_tone
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    prompt: |
+      Is this customer support response empathetic, professional, and solution-focused?
+      Answer with only "yes" or "no".
+
+      Response to evaluate:
+      {{generate_response.output}}
+    min_pass_rate: 0.80
+    assertions:
+      - type: regex
+        value: "^(yes|no)"

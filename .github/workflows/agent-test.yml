@@ -1,0 +1,37 @@
+# Example: Run stepproof in GitHub Actions
+# Copy this to your own .github/workflows/ to gate deployments on agent pass rates
+
+name: Agent Regression Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  agent-tests:
+    name: stepproof
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stepproof
+        run: npm install -g stepproof
+
+      - name: Run agent regression tests
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          stepproof run scenarios/your-pipeline.yaml \
+            --iterations 10 \
+            --output stepproof-report.json
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stepproof-report
+          path: stepproof-report.json

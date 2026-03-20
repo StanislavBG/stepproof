@@ -1,0 +1,106 @@
+# tool-calling.yaml
+# Tests that an agent selects the correct tool and produces valid output.
+# Scenario: user asks a question that requires a tool call (weather lookup),
+# verify the agent picks the right tool AND the response uses the tool result.
+# Run: stepproof run tool-calling.yaml
+
+name: "Tool selection — weather lookup"
+iterations: 10
+
+variables:
+  user_query: "What's the weather like in Tokyo right now?"
+
+# Tool definitions — stepproof passes these to the model and captures the call
+tools:
+  - name: get_weather
+    description: "Get current weather for a city. Returns temperature, conditions, and humidity."
+    parameters:
+      type: object
+      properties:
+        city:
+          type: string
+          description: "City name"
+        units:
+          type: string
+          enum: ["celsius", "fahrenheit"]
+          description: "Temperature units"
+      required: ["city"]
+
+  - name: search_web
+    description: "Search the web for general information."
+    parameters:
+      type: object
+      properties:
+        query:
+          type: string
+      required: ["query"]
+
+  # Distractor tool — the model should NOT pick this for weather
+  - name: get_stock_price
+    description: "Get the current stock price for a ticker symbol."
+    parameters:
+      type: object
+      properties:
+        ticker:
+          type: string
+      required: ["ticker"]
+
+steps:
+  # Step 1: Agent decides which tool to call
+  - id: tool_selection
+    provider: openai
+    model: gpt-4o
+    prompt: |
+      You are a helpful assistant with access to tools. Use the right tool
+      to answer this question: {{user_query}}
+
+      Respond with a tool call. Do not answer from memory.
+    min_pass_rate: 0.95
+    assertions:
+      # Must call the weather tool, not the others
+      - type: tool_called
+        tool_name: "get_weather"
+      # Must not call unrelated tools
+      - type: tool_not_called
+        tool_name: "get_stock_price"
+      # The tool call must include the right city
+      - type: tool_arg_contains
+        tool_name: "get_weather"
+        arg: "city"
+        value: "Tokyo"
+
+  # Step 2: Agent synthesizes the tool result into a user-facing response
+  # stepproof injects a mock tool result for deterministic testing
+  - id: response_synthesis
+    provider: openai
+    model: gpt-4o
+    prompt: |
+      The user asked: {{user_query}}
+
+      Tool result from get_weather:
+      {"city": "Tokyo", "temperature": 18, "units": "celsius",
+       "conditions": "Partly cloudy", "humidity": 65}
+
+      Write a natural, helpful response to the user.
+    min_pass_rate: 0.90
+    assertions:
+      # Must use the data from the tool result
+      - type: contains
+        value: "18"
+      - type: contains
+        value: "Tokyo"
+      # Should mention conditions
+      - type: regex
+        pattern: "(cloud|humid|weather)"
+      # Quality check
+      - type: llm_judge
+        provider: anthropic
+        model: claude-haiku-4-5-20251001
+        prompt: |
+          Does this response accurately reflect the weather data provided
+          and directly answer the user's question? Answer yes or no.
+
+          User question: {{user_query}}
+          Weather data: temperature 18°C, partly cloudy, 65% humidity
+          Response: {{response_synthesis.output}}
+        pass_on: "yes"

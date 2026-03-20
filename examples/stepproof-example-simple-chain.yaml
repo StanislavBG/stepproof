@@ -1,0 +1,50 @@
+# simple-chain.yaml
+# Basic scenario: prompt → response → assertion
+# Tests that a single-step summarization pipeline produces a usable output.
+# Run: stepproof run simple-chain.yaml
+
+name: "Article summarization"
+iterations: 10
+
+# Global variables available to all steps
+variables:
+  article: |
+    Researchers at MIT have developed a new battery chemistry that could
+    double the energy density of lithium-ion batteries while reducing charge
+    time by 60%. The breakthrough uses a solid-state electrolyte combined
+    with a novel anode material derived from silicon nanowires. Early
+    prototypes have survived 1,000 charge cycles with less than 5% capacity
+    degradation. Commercial production is expected within 3–5 years.
+
+steps:
+  - id: summarize
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    prompt: |
+      Summarize the following article in exactly two sentences.
+      Be factual. Do not add information not present in the article.
+
+      Article:
+      {{article}}
+    min_pass_rate: 0.90
+    assertions:
+      # Must mention the core topic
+      - type: contains
+        value: "battery"
+      # Should not hallucinate specific claims
+      - type: not_contains
+        value: "quantum"
+      # Should be concise — two sentences means roughly 50–150 words
+      - type: regex
+        pattern: "^[A-Z].{50,300}[.!?]\\s+[A-Z].{20,200}[.!?]$"
+      # An LLM judge verifies quality
+      - type: llm_judge
+        provider: openai
+        model: gpt-4o-mini
+        prompt: |
+          Does this summary accurately represent the article without adding
+          fabricated information? Answer yes or no.
+
+          Article: {{article}}
+          Summary: {{summarize.output}}
+        pass_on: "yes"

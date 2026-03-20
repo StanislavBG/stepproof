@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://stepproof.dev/schemas/scenario.schema.json",
+  "title": "StepProof Scenario",
+  "description": "Schema for a stepproof scenario YAML file",
+  "type": "object",
+  "required": ["name", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for this scenario"
+    },
+    "iterations": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "default": 10,
+      "description": "Number of times to run the full scenario"
+    },
+    "variables": {
+      "type": "object",
+      "description": "Global variables available in prompt templates as {{variable_name}}",
+      "additionalProperties": { "type": "string" }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Ordered list of steps to execute per iteration",
+      "items": {
+        "$ref": "#/definitions/Step"
+      }
+    }
+  },
+  "definitions": {
+    "Step": {
+      "type": "object",
+      "required": ["id", "provider", "model", "prompt"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Unique step identifier (snake_case). Referenced as {{step_id.output}} in later steps."
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["openai", "anthropic"],
+          "description": "LLM provider to use for this step"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model ID (e.g., gpt-4o, claude-sonnet-4-6)"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Prompt template. Use {{variable}} for substitution, {{step_id.output}} for prior step outputs."
+        },
+        "system": {
+          "type": "string",
+          "description": "Optional system prompt"
+        },
+        "min_pass_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.8,
+          "description": "Minimum fraction of iterations that must pass assertions (0.0–1.0). CI exits 1 if below this."
+        },
+        "assertions": {
+          "type": "array",
+          "default": [],
+          "description": "List of assertions to run on the step output",
+          "items": {
+            "$ref": "#/definitions/Assertion"
+          }
+        }
+      }
+    },
+    "Assertion": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["contains", "not_contains", "regex", "json_schema", "llm_judge"],
+          "description": "Assertion type"
+        },
+        "value": {
+          "type": "string",
+          "description": "For contains/not_contains: the substring to check. For regex: the pattern."
+        },
+        "schema": {
+          "type": "string",
+          "description": "For json_schema: path to JSON schema file (relative to scenario file)"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "For llm_judge: the evaluation prompt. The step output is appended automatically."
+        },
+        "pass_on": {
+          "type": "string",
+          "default": "yes",
+          "description": "For llm_judge: the expected response prefix (case-insensitive). Default: \"yes\""
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["openai", "anthropic"],
+          "default": "anthropic",
+          "description": "For llm_judge: which provider to use. Default: anthropic"
+        },
+        "model": {
+          "type": "string",
+          "description": "For llm_judge: override model. Defaults to cheapest available (haiku/gpt-4o-mini)"
+        }
+      }
+    }
+  }
+}
