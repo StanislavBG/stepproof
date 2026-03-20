@@ -23,21 +23,29 @@ program
   .option('-o, --output <file>', 'Path for JSON report output', 'stepproof-report.json')
   .option('--no-json', 'Skip JSON report output')
   .option('--quiet', 'Suppress terminal output (use with --output for CI)')
-  .option('--report <format>', 'Output format: sarif, junit')
+  .option('--format <format>', 'Output format: sarif, junit')
+  .option('--report <format>', '(deprecated: use --format)')
   .action(async (scenarioPath: string, opts: {
     iterations?: number;
     output: string;
     json: boolean;
     quiet: boolean;
+    format?: string;
     report?: string;
   }) => {
-    if (opts.report && opts.report !== 'sarif' && opts.report !== 'junit') {
-      console.error(`\nError: --report must be "sarif" or "junit", got "${opts.report}"`);
+    // --report is deprecated; normalize to --format
+    if (opts.report && !opts.format) {
+      process.stderr.write('Warning: --report is deprecated, use --format instead\n');
+      opts.format = opts.report;
+    }
+
+    if (opts.format && opts.format !== 'sarif' && opts.format !== 'junit') {
+      console.error(`\nError: --format must be "sarif" or "junit", got "${opts.format}"`);
       process.exit(2);
     }
 
-    // --report implies quiet (suppress terminal output) unless --quiet already set
-    const isQuiet = opts.quiet || !!opts.report;
+    // --format implies quiet (suppress terminal output) unless --quiet already set
+    const isQuiet = opts.quiet || !!opts.format;
     const resolvedPath = path.resolve(process.cwd(), scenarioPath);
 
     let scenario;
@@ -77,15 +85,15 @@ program
       process.exit(2);
     }
 
-    // Handle --report sarif / --report junit
-    if (opts.report === 'sarif' || opts.report === 'junit') {
-      const formatted = opts.report === 'sarif' ? formatSarif(report) : formatJunit(report);
+    // Handle --format sarif / --format junit
+    if (opts.format === 'sarif' || opts.format === 'junit') {
+      const formatted = opts.format === 'sarif' ? formatSarif(report) : formatJunit(report);
       const hasExplicitOutput = process.argv.includes('--output') || process.argv.includes('-o');
       if (hasExplicitOutput) {
         try {
           fs.writeFileSync(opts.output, formatted, 'utf-8');
         } catch (e) {
-          console.error(`Warning: Could not write ${opts.report} report: ${(e as Error).message}`);
+          console.error(`Warning: Could not write ${opts.format} report: ${(e as Error).message}`);
         }
       } else {
         process.stdout.write(formatted + '\n');

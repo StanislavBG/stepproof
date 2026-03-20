@@ -176,10 +176,10 @@ stepproof outputs machine-readable SARIF 2.1.0 and JUnit XML for CI pipeline int
 
 ```bash
 # Write SARIF to stdout
-stepproof run classify.yaml --report sarif
+stepproof run classify.yaml --format sarif
 
 # Write SARIF to file
-stepproof run classify.yaml --report sarif --output results.sarif
+stepproof run classify.yaml --format sarif --output results.sarif
 ```
 
 Integrate with GitHub Advanced Security:
@@ -187,7 +187,7 @@ Integrate with GitHub Advanced Security:
 ```yaml
 # .github/workflows/ai-regression.yml
 - name: Run stepproof
-  run: stepproof run scenarios/ --report sarif --output results.sarif
+  run: stepproof run scenarios/ --format sarif --output results.sarif
 
 - name: Upload to GitHub Security tab
   uses: github/codeql-action/upload-sarif@v3
@@ -199,14 +199,14 @@ Integrate with GitHub Advanced Security:
 ### JUnit XML — Jenkins / CircleCI / TeamCity
 
 ```bash
-stepproof run classify.yaml --report junit
-stepproof run classify.yaml --report junit --output results.xml
+stepproof run classify.yaml --format junit
+stepproof run classify.yaml --format junit --output results.xml
 ```
 
 ```yaml
 # .github/workflows/ai-regression.yml
 - name: Run stepproof
-  run: stepproof run scenarios/ --report junit --output test-results.xml
+  run: stepproof run scenarios/ --format junit --output test-results.xml
 
 - name: Publish test results
   uses: actions/upload-artifact@v4
@@ -216,7 +216,9 @@ stepproof run classify.yaml --report junit --output results.xml
   if: always()
 ```
 
-Default output (no `--report` flag) is unchanged — human-readable terminal output.
+Default output (no `--format` flag) is unchanged — human-readable terminal output.
+
+> **Migration note (v0.2.x → v0.3.0):** `--report` still works but is deprecated and will print a warning. Switch to `--format` at your next convenience. `--report` will be removed at v1.0.0.
 
 ---
 
