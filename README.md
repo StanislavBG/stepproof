@@ -1,5 +1,9 @@
 # stepproof
 
+[![Part of Preflight](https://img.shields.io/badge/suite-Preflight-blue)](https://github.com/StanislavBG/agent-gate)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)]()
+[![License](https://img.shields.io/badge/license-MIT-green)]()
+
 **Regression testing for multi-step AI workflows. Not observability.**
 
 ---
