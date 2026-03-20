@@ -8,6 +8,7 @@ import { printReport, printProgress } from './reporters/terminal-reporter.js';
 import { formatSarif } from './reporters/sarif-reporter.js';
 import { formatJunit } from './reporters/junit-reporter.js';
 import * as fs from 'node:fs';
+import { guard } from '@preflight/license';
 
 const program = new Command();
 
@@ -42,6 +43,11 @@ program
     if (opts.format && opts.format !== 'sarif' && opts.format !== 'junit') {
       console.error(`\nError: --format must be "sarif" or "junit", got "${opts.format}"`);
       process.exit(2);
+    }
+
+    // License gate — check before running the scenario (avoid wasted API calls)
+    if (opts.format === 'sarif' || opts.format === 'junit') {
+      guard('team', { feature: `--format ${opts.format}` });
     }
 
     // --format implies quiet (suppress terminal output) unless --quiet already set

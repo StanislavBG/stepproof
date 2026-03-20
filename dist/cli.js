@@ -8,11 +8,12 @@ import { printReport } from './reporters/terminal-reporter.js';
 import { formatSarif } from './reporters/sarif-reporter.js';
 import { formatJunit } from './reporters/junit-reporter.js';
 import * as fs from 'node:fs';
+import { guard } from '@preflight/license';
 const program = new Command();
 program
     .name('stepproof')
     .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-    .version('0.1.0');
+    .version('0.2.0');
 program
     .command('run <scenario>')
     .description('Run a scenario YAML file and report pass rates per step')
@@ -20,14 +21,24 @@ program
     .option('-o, --output <file>', 'Path for JSON report output', 'stepproof-report.json')
     .option('--no-json', 'Skip JSON report output')
     .option('--quiet', 'Suppress terminal output (use with --output for CI)')
-    .option('--report <format>', 'Output format: sarif, junit')
+    .option('--format <format>', 'Output format: sarif, junit')
+    .option('--report <format>', '(deprecated: use --format)')
     .action(async (scenarioPath, opts) => {
-    if (opts.report && opts.report !== 'sarif' && opts.report !== 'junit') {
-        console.error(`\nError: --report must be "sarif" or "junit", got "${opts.report}"`);
+    // --report is deprecated; normalize to --format
+    if (opts.report && !opts.format) {
+        process.stderr.write('Warning: --report is deprecated, use --format instead\n');
+        opts.format = opts.report;
+    }
+    if (opts.format && opts.format !== 'sarif' && opts.format !== 'junit') {
+        console.error(`\nError: --format must be "sarif" or "junit", got "${opts.format}"`);
         process.exit(2);
     }
-    // --report implies quiet (suppress terminal output) unless --quiet already set
-    const isQuiet = opts.quiet || !!opts.report;
+    // License gate — check before running the scenario (avoid wasted API calls)
+    if (opts.format === 'sarif' || opts.format === 'junit') {
+        guard('team', { feature: `--format ${opts.format}` });
+    }
+    // --format implies quiet (suppress terminal output) unless --quiet already set
+    const isQuiet = opts.quiet || !!opts.format;
     const resolvedPath = path.resolve(process.cwd(), scenarioPath);
     let scenario;
     try {
@@ -64,16 +75,16 @@ program
         console.error(`\nError running scenario: ${e.message}`);
         process.exit(2);
     }
-    // Handle --report sarif / --report junit
-    if (opts.report === 'sarif' || opts.report === 'junit') {
-        const formatted = opts.report === 'sarif' ? formatSarif(report) : formatJunit(report);
+    // Handle --format sarif / --format junit
+    if (opts.format === 'sarif' || opts.format === 'junit') {
+        const formatted = opts.format === 'sarif' ? formatSarif(report) : formatJunit(report);
         const hasExplicitOutput = process.argv.includes('--output') || process.argv.includes('-o');
         if (hasExplicitOutput) {
             try {
                 fs.writeFileSync(opts.output, formatted, 'utf-8');
             }
             catch (e) {
-                console.error(`Warning: Could not write ${opts.report} report: ${e.message}`);
+                console.error(`Warning: Could not write ${opts.format} report: ${e.message}`);
             }
         }
         else {
