@@ -168,9 +168,61 @@ npm test
 
 ---
 
+## Structured reports (v0.2.0)
+
+stepproof outputs machine-readable SARIF 2.1.0 and JUnit XML for CI pipeline integration.
+
+### SARIF — GitHub Advanced Security / GitLab / Azure DevOps
+
+```bash
+# Write SARIF to stdout
+stepproof run classify.yaml --report sarif
+
+# Write SARIF to file
+stepproof run classify.yaml --report sarif --output results.sarif
+```
+
+Integrate with GitHub Advanced Security:
+
+```yaml
+# .github/workflows/ai-regression.yml
+- name: Run stepproof
+  run: stepproof run scenarios/ --report sarif --output results.sarif
+
+- name: Upload to GitHub Security tab
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: results.sarif
+  if: always()
+```
+
+### JUnit XML — Jenkins / CircleCI / TeamCity
+
+```bash
+stepproof run classify.yaml --report junit
+stepproof run classify.yaml --report junit --output results.xml
+```
+
+```yaml
+# .github/workflows/ai-regression.yml
+- name: Run stepproof
+  run: stepproof run scenarios/ --report junit --output test-results.xml
+
+- name: Publish test results
+  uses: actions/upload-artifact@v4
+  with:
+    name: test-results
+    path: test-results.xml
+  if: always()
+```
+
+Default output (no `--report` flag) is unchanged — human-readable terminal output.
+
+---
+
 ## Part of the Preflight suite
 
-stepproof is one tool in a suite of AI agent pre-deploy checks:
+stepproof is one tool in the **Preflight** AI Agent DevOps suite — local-first CLIs covering the full lifecycle from pre-deploy validation to production observability:
 
 | Tool | Purpose | Install |
 |------|---------|---------|
@@ -178,8 +230,9 @@ stepproof is one tool in a suite of AI agent pre-deploy checks:
 | **agent-comply** | EU AI Act compliance scanning | `npm install -g github:StanislavBG/agent-comply` |
 | **agent-gate** | Unified pre-deploy CI gate | `npm install -g github:StanislavBG/agent-gate` |
 | **agent-shift** | Config versioning + environment promotion | `npm install -g github:StanislavBG/agent-shift` |
+| **agent-trace** | Local observability — OTel traces in SQLite | `npm install -g github:StanislavBG/agent-trace` |
 
 Install the full suite:
 ```bash
-npm install -g github:StanislavBG/agent-gate github:StanislavBG/stepproof github:StanislavBG/agent-comply github:StanislavBG/agent-shift
+npm install -g github:StanislavBG/agent-gate github:StanislavBG/stepproof github:StanislavBG/agent-comply github:StanislavBG/agent-shift github:StanislavBG/agent-trace
 ```

@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name('stepproof')
   .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-  .version('0.1.0');
+  .version('0.2.0');
 
 program
   .command('run <scenario>')

@@ -1,6 +1,6 @@
 {
   "name": "stepproof",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Regression testing for multi-step AI workflows. Not observability — a CI gate.",
   "main": "dist/cli.js",
   "bin": {
