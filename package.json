@@ -12,6 +12,7 @@
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "prepare": "npm run build",
     "prepublishOnly": "npm run build"
   },
   "files": [
