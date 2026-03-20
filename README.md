@@ -8,8 +8,9 @@ You upgraded to `gpt-4o-mini`. Your LangSmith traces look fine. Three days later
 
 stepproof is what you run before you deploy.
 
-```
-npm install -g stepproof
+```bash
+# Install from GitHub (npm package coming soon)
+npm install -g github:StanislavBG/stepproof
 ```
 
 ---
@@ -91,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npm install -g stepproof
+      - run: npm install -g github:StanislavBG/stepproof
       - run: stepproof run scenarios/classify.yaml
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -151,7 +152,7 @@ See [`/examples`](./examples) for copy-paste ready scenarios:
 Issues and PRs welcome. The tool is and will remain free. Cloud features are the business model, not the CLI.
 
 ```
-git clone https://github.com/yourusername/stepproof
+git clone https://github.com/StanislavBG/stepproof
 cd stepproof
 npm install
 npm test
@@ -160,3 +161,21 @@ npm test
 ---
 
 *stepproof — because "I checked manually before the deploy" is not a test.*
+
+---
+
+## Part of the Preflight suite
+
+stepproof is one tool in a suite of AI agent pre-deploy checks:
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| **stepproof** | Behavioral regression testing | `npm install -g github:StanislavBG/stepproof` |
+| **agent-comply** | EU AI Act compliance scanning | `npm install -g github:StanislavBG/agent-comply` |
+| **agent-gate** | Unified pre-deploy CI gate | `npm install -g github:StanislavBG/agent-gate` |
+| **agent-shift** | Config versioning + environment promotion | `npm install -g github:StanislavBG/agent-shift` |
+
+Install the full suite:
+```bash
+npm install -g github:StanislavBG/agent-gate github:StanislavBG/stepproof github:StanislavBG/agent-comply github:StanislavBG/agent-shift
+```
