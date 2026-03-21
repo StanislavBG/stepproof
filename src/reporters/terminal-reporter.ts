@@ -1,11 +1,15 @@
 import chalk from 'chalk';
+import { createRequire } from 'node:module';
 import type { ScenarioReport, StepSummary } from '../core/types.js';
+
+const require = createRequire(import.meta.url);
+const { version } = require('../../package.json') as { version: string };
 
 export function printReport(report: ScenarioReport, reportPath?: string): void {
   const { scenarioName, iterations, steps, allPassed, durationMs } = report;
 
   console.log('');
-  console.log(chalk.bold('stepproof') + chalk.dim(' v0.1.0'));
+  console.log(chalk.bold('stepproof') + chalk.dim(` v${version}`));
   console.log(chalk.dim('─'.repeat(50)));
   console.log(`${chalk.bold('Scenario:')} ${scenarioName}`);
   console.log(`${chalk.bold('Iterations:')} ${iterations}`);

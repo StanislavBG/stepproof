@@ -16,7 +16,13 @@ const program = new Command();
 program
   .name('stepproof')
   .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-  .version('0.2.0');
+  .version('0.2.0')
+  .addHelpText('after', `
+Examples:
+  stepproof init                                        scaffold a starter scenario
+  stepproof run ./scenarios/first-test.yaml             run one scenario
+  stepproof run ./scenarios/                            run all scenarios in a directory
+  stepproof run test.yaml --format sarif --output results.sarif  SARIF output for CI`);
 
 program
   .command('init [dir]')
