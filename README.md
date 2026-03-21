@@ -274,3 +274,11 @@ npm install -g agent-gate stepproof agent-comply agent-shift agent-trace
 ---
 
 *stepproof — because "I checked manually before the deploy" is not a test.*
+
+---
+
+## Legal
+
+- [Privacy Policy](https://stanislavbg.github.io/preflight/privacy.html)
+- [Terms of Service](https://stanislavbg.github.io/preflight/terms.html)
+- Contact: [bilko@bglabs.app](mailto:bilko@bglabs.app)
