@@ -34,7 +34,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/StanislavBG/stepproof"
+    "url": "git+https://github.com/StanislavBG/stepproof.git"
   },
   "publishConfig": {
     "access": "public"
@@ -44,7 +44,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.37.0",
-    "@preflight/license": "file:../preflight-license",
+    "@preflight/license": "^1.0.0",
     "ajv": "^8.17.1",
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
