@@ -52,6 +52,12 @@ program
     }
     // --format implies quiet (suppress terminal output) unless --quiet already set
     const isQuiet = opts.quiet || !!opts.format;
+    if (opts.iterations !== undefined) {
+        if (!Number.isInteger(opts.iterations) || opts.iterations <= 0) {
+            console.error(`\nError: --iterations must be a positive integer, got "${process.argv[process.argv.indexOf('--iterations') + 1] ?? process.argv[process.argv.indexOf('-n') + 1]}"`);
+            process.exit(2);
+        }
+    }
     if (scenarioPath.includes('\0')) {
         console.error('\nError: Invalid path — null bytes are not allowed');
         process.exit(2);
@@ -61,6 +67,17 @@ program
         process.exit(2);
     }
     const resolvedPath = path.resolve(process.cwd(), scenarioPath);
+    try {
+        const stat = fs.statSync(resolvedPath);
+        if (stat.isDirectory()) {
+            console.error(`\nError: "${scenarioPath}" is a directory.`);
+            console.error('Run a specific file: stepproof run ./scenarios/first-test.yaml');
+            process.exit(2);
+        }
+    }
+    catch {
+        // Non-existent path — parseScenario will produce the right error below
+    }
     let scenario;
     try {
         scenario = parseScenario(resolvedPath);

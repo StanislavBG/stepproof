@@ -191,3 +191,43 @@ describe('stepproof CLI — init idempotency', () => {
     fs.rmSync(tmpDir, { recursive: true });
   });
 });
+
+describe('stepproof CLI — --iterations validation', () => {
+  it('--iterations with non-numeric value → exits 2 with helpful message', () => {
+    const tmpFile = path.join(os.tmpdir(), 'stepproof-iter-str.yaml');
+    fs.writeFileSync(tmpFile, VALID_SCENARIO);
+    const { code, stderr } = run(['run', tmpFile, '--iterations', 'abc']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('--iterations');
+    fs.unlinkSync(tmpFile);
+  });
+
+  it('--iterations 0 → exits 2 (zero iterations makes no sense)', () => {
+    const tmpFile = path.join(os.tmpdir(), 'stepproof-iter-zero.yaml');
+    fs.writeFileSync(tmpFile, VALID_SCENARIO);
+    const { code, stderr } = run(['run', tmpFile, '--iterations', '0']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('--iterations');
+    fs.unlinkSync(tmpFile);
+  });
+
+  it('--iterations -1 → exits 2 (negative iterations rejected)', () => {
+    const tmpFile = path.join(os.tmpdir(), 'stepproof-iter-neg.yaml');
+    fs.writeFileSync(tmpFile, VALID_SCENARIO);
+    const { code, stderr } = run(['run', tmpFile, '--iterations', '-1']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('--iterations');
+    fs.unlinkSync(tmpFile);
+  });
+});
+
+describe('stepproof CLI — directory input detection', () => {
+  it('run with a directory path → exits 2 with helpful message', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stepproof-dir-'));
+    const { code, stderr } = run(['run', tmpDir]);
+    expect(code).toBe(2);
+    expect(stderr).toContain('directory');
+    expect(stderr).toContain('first-test.yaml');
+    fs.rmSync(tmpDir, { recursive: true });
+  });
+});
