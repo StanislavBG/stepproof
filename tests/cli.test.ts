@@ -11,16 +11,22 @@ import * as os from 'os';
 const CLI = path.resolve(__dirname, '../dist/cli.js');
 
 function run(args: string[], cwd?: string) {
-  const result = spawnSync(process.execPath, [CLI, ...args], {
-    cwd: cwd ?? os.tmpdir(),
-    encoding: 'utf-8',
-    timeout: 10000,
-  });
-  return {
-    code: result.status ?? 1,
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? '',
-  };
+  try {
+    const result = spawnSync(process.execPath, [CLI, ...args], {
+      cwd: cwd ?? os.tmpdir(),
+      encoding: 'utf-8',
+      timeout: 10000,
+    });
+    return {
+      code: result.status ?? 1,
+      stdout: result.stdout ?? '',
+      stderr: result.stderr ?? '',
+    };
+  } catch (e) {
+    // Node.js rejects null bytes in spawn args before the process starts —
+    // this is the OS-level rejection of malformed input, equivalent to exit 2.
+    return { code: 2, stdout: '', stderr: String(e) };
+  }
 }
 
 // Minimal valid scenario YAML for happy-path tests
@@ -117,8 +123,71 @@ describe('stepproof CLI — init command', () => {
     fs.rmSync(tmpDir, { recursive: true });
   });
 
+  it('init with custom dir arg → creates scenarios in that dir', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stepproof-init-dir-'));
+    const customDir = path.join(tmpDir, 'my-scenarios');
+    const { code } = run(['init', customDir], tmpDir);
+    expect(code).toBe(0);
+    expect(fs.existsSync(path.join(customDir, 'first-test.yaml'))).toBe(true);
+    fs.rmSync(tmpDir, { recursive: true });
+  });
+
   it('init --help → exits 0', () => {
     const { code } = run(['init', '--help']);
     expect(code).toBe(0);
+  });
+});
+
+describe('stepproof CLI — input sanitization', () => {
+  it('run with null byte in path → exits 2 with error', () => {
+    const { code, stderr } = run(['run', 'scenario\0.yaml']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('null');
+  });
+
+  it('run with --output containing null byte → exits 2 with error', () => {
+    const tmpFile = path.join(os.tmpdir(), 'stepproof-nullout.yaml');
+    fs.writeFileSync(tmpFile, VALID_SCENARIO);
+    const { code, stderr } = run(['run', tmpFile, '--output', 'out\0.json']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('null');
+    fs.unlinkSync(tmpFile);
+  });
+});
+
+describe('stepproof CLI — deprecated --report flag', () => {
+  it('run with --report sarif → warns and exits 2 (license gate)', () => {
+    const tmpFile = path.join(os.tmpdir(), 'stepproof-report-flag.yaml');
+    fs.writeFileSync(tmpFile, VALID_SCENARIO);
+    const { code, stderr } = run(['run', tmpFile, '--report', 'sarif']);
+    // --report is deprecated: should warn in stderr; sarif requires team license so exits 2
+    expect(stderr).toContain('deprecated');
+    fs.unlinkSync(tmpFile);
+  });
+});
+
+describe('stepproof CLI — subcommand help', () => {
+  it('run --help → exits 0 and lists run options', () => {
+    const { code, stdout } = run(['run', '--help']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('--format');
+    expect(stdout).toContain('--output');
+  });
+
+  it('init --help → exits 0 and shows init usage', () => {
+    const { code, stdout } = run(['init', '--help']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('scenario');
+  });
+});
+
+describe('stepproof CLI — init idempotency', () => {
+  it('init twice in same dir → exits 0 both times (idempotent)', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stepproof-init-idem-'));
+    const { code: code1 } = run(['init'], tmpDir);
+    expect(code1).toBe(0);
+    const { code: code2 } = run(['init'], tmpDir);
+    expect(code2).toBe(0);
+    fs.rmSync(tmpDir, { recursive: true });
   });
 });

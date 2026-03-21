@@ -52,6 +52,14 @@ program
     }
     // --format implies quiet (suppress terminal output) unless --quiet already set
     const isQuiet = opts.quiet || !!opts.format;
+    if (scenarioPath.includes('\0')) {
+        console.error('\nError: Invalid path — null bytes are not allowed');
+        process.exit(2);
+    }
+    if (opts.output && opts.output.includes('\0')) {
+        console.error('\nError: Invalid output path — null bytes are not allowed');
+        process.exit(2);
+    }
     const resolvedPath = path.resolve(process.cwd(), scenarioPath);
     let scenario;
     try {
