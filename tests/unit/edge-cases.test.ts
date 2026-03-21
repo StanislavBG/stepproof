@@ -128,6 +128,92 @@ steps:
     const scenario = parseScenario(filePath);
     expect(scenario.steps[0].min_pass_rate).toBe(0.0);
   });
+
+  it('throws on min_pass_rate > 1.0', () => {
+    const filePath = writeTempScenario(`
+name: "Out of Range"
+steps:
+  - id: bad_rate
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    prompt: "Hello"
+    min_pass_rate: 1.5
+`);
+    expect(() => parseScenario(filePath)).toThrow('min_pass_rate');
+  });
+
+  it('throws on min_pass_rate < 0.0', () => {
+    const filePath = writeTempScenario(`
+name: "Negative Rate"
+steps:
+  - id: neg_rate
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    prompt: "Hello"
+    min_pass_rate: -0.1
+`);
+    expect(() => parseScenario(filePath)).toThrow('min_pass_rate');
+  });
+
+  it('parses optional system prompt field', () => {
+    const filePath = writeTempScenario(`
+name: "With System Prompt"
+steps:
+  - id: step_system
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    prompt: "Hello"
+    system: "You are a helpful assistant."
+`);
+    const scenario = parseScenario(filePath);
+    expect(scenario.steps[0].system).toBe('You are a helpful assistant.');
+  });
+
+  it('system field is undefined when not provided', () => {
+    const filePath = writeTempScenario(`
+name: "No System"
+steps:
+  - id: no_sys
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    prompt: "Hello"
+`);
+    const scenario = parseScenario(filePath);
+    expect(scenario.steps[0].system).toBeUndefined();
+  });
+
+  it('throws when step is missing id field', () => {
+    const filePath = writeTempScenario(`
+name: "Missing ID"
+steps:
+  - provider: anthropic
+    model: claude-haiku-4-5-20251001
+    prompt: "Hello"
+`);
+    expect(() => parseScenario(filePath)).toThrow('id');
+  });
+
+  it('throws when step is missing model field', () => {
+    const filePath = writeTempScenario(`
+name: "Missing Model"
+steps:
+  - id: no_model
+    provider: anthropic
+    prompt: "Hello"
+`);
+    expect(() => parseScenario(filePath)).toThrow('model');
+  });
+
+  it('throws when step is missing prompt field', () => {
+    const filePath = writeTempScenario(`
+name: "Missing Prompt"
+steps:
+  - id: no_prompt
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+`);
+    expect(() => parseScenario(filePath)).toThrow('prompt');
+  });
 });
 
 describe('substituteVariables — edge cases', () => {
