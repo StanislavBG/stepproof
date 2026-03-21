@@ -75,8 +75,13 @@ program
             process.exit(2);
         }
     }
-    catch {
-        // Non-existent path — parseScenario will produce the right error below
+    catch (statErr) {
+        if (statErr.code === 'ENOENT') {
+            console.error(`\nScenario not found: ${resolvedPath}`);
+            console.error("Run 'stepproof init' to scaffold a new scenario, or check the path.");
+            process.exit(2);
+        }
+        // Other stat errors — let parseScenario surface the message
     }
     let scenario;
     try {
