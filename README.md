@@ -231,6 +231,41 @@ These are different jobs. Use both.
 
 ---
 
+## Troubleshooting
+
+### `Error: "scenarios/" is a directory`
+```
+stepproof run ./scenarios/first-test.yaml   # ← run a specific file
+stepproof run ./scenarios/                  # ← or run the whole dir (note trailing slash)
+```
+
+### `Error parsing scenario: ...`
+Your YAML has a syntax error. Common culprits: inconsistent indentation, unquoted `{{vars}}`, or a missing `steps:` key. Run `node -e "require('fs').readFileSync('./your.yaml')"` to catch basic issues.
+
+### API errors (`401 Unauthorized`, `403 Forbidden`)
+Set the API key for whichever provider your scenario uses:
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+export OPENAI_API_KEY=sk-...
+```
+Only the keys for providers you use in your scenarios are required.
+
+### Steps failing when they should pass
+Check `min_pass_rate` in your scenario. The default is not 100% — if you set `min_pass_rate: 0.90` you expect 1-in-10 to fail. Lower it, or improve your prompt.
+
+### `--format must be "sarif" or "junit"`
+Only `sarif` and `junit` are valid format values. For terminal output, omit the `--format` flag entirely.
+
+### Pro features blocked (SARIF / JUnit output)
+SARIF and JUnit formats require a Team license. Set your key:
+```bash
+export PREFLIGHT_LICENSE_KEY=preflight_...
+stepproof run scenarios/ --format sarif --output results.sarif
+```
+Get a license at the [Preflight pricing page](https://stanislavbg.github.io/preflight/).
+
+---
+
 ## Scenarios
 
 See [`/examples`](./examples) for copy-paste ready scenarios:
