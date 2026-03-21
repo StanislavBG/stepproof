@@ -1,0 +1,75 @@
+name: Bug Report
+description: Something isn't working right with stepproof
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. stepproof is a CI gate for AI workflows — reliability matters. The more detail you provide, the faster we can fix it.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+      placeholder: "When I run `npx stepproof run`, I see..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Exact steps to reproduce the behavior.
+      placeholder: |
+        1. Run `npx stepproof init`
+        2. Run `npx stepproof run`
+        3. See error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Your stepproof config (stepproof.yaml / .stepproof/)
+      description: Paste your config here — redact any API keys or credentials.
+      render: yaml
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version
+      placeholder: "e.g. 20.11.0 — run `node --version`"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "e.g. macOS 14, Ubuntu 22.04, Windows 11"
+    validations:
+      required: true
+
+  - type: input
+    id: stepproof-version
+    attributes:
+      label: stepproof version
+      placeholder: "run `npx stepproof --version`"
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Full error output
+      description: Paste the complete terminal output, including any stack traces.
+      render: shell

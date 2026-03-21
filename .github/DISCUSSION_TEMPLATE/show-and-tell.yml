@@ -1,0 +1,37 @@
+title: "[Show] "
+labels: ["show-and-tell"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Running stepproof in your CI pipeline? Built a custom test schema? Integrated it with your AI agent deployment workflow? Show it off — the community learns from real setups.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What did you build?
+      description: Describe your setup and how stepproof fits in.
+      placeholder: "I integrated stepproof into our GitHub Actions workflow so every AI agent deployment requires regression tests to pass before merge..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: how
+    attributes:
+      label: How does it work?
+      description: Share your config files, workflow YAML, test schemas, or CLI commands. The more concrete the better.
+    validations:
+      required: true
+
+  - type: input
+    id: link
+    attributes:
+      label: Link (optional)
+      description: GitHub repo, gist, blog post — anything shareable.
+      placeholder: "https://github.com/yourname/your-project"
+
+  - type: textarea
+    id: lessons
+    attributes:
+      label: Lessons learned
+      description: What worked? What didn't? What would you do differently?

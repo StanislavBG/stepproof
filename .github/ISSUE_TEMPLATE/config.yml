@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question
+    url: https://github.com/StanislavBG/stepproof/discussions/new?category=q-a
+    about: Not sure if it's a bug? Ask in Discussions first.
+  - name: Show & Tell
+    url: https://github.com/StanislavBG/stepproof/discussions/new?category=show-and-tell
+    about: Share your CI setup, test schemas, or workflow integrations.
+  - name: Documentation
+    url: https://github.com/StanislavBG/stepproof/blob/main/README.md
+    about: README with full CLI reference and examples.
+  - name: Preflight Suite
+    url: https://github.com/StanislavBG/agent-gate
+    about: stepproof is part of the Preflight Suite — agent-gate, agent-comply, and more.

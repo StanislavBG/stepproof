@@ -8,7 +8,7 @@ import { printReport, printProgress } from './reporters/terminal-reporter.js';
 import { formatSarif } from './reporters/sarif-reporter.js';
 import { formatJunit } from './reporters/junit-reporter.js';
 import * as fs from 'node:fs';
-import { guard } from '@preflight/license';
+import { guard } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
 
 const program = new Command();

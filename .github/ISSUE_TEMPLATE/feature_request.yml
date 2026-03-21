@@ -1,0 +1,59 @@
+name: Feature Request
+description: Suggest a new test type, output format, or CI integration
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Good feature requests start with the problem, not the solution. What workflow are you trying to accomplish?
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the CI/CD or testing workflow you're trying to accomplish.
+      placeholder: "When I run stepproof in GitHub Actions, I can't easily see which steps regressed because..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to see?
+      description: Describe the feature. Include example CLI commands or config if helpful.
+      placeholder: |
+        A `--format=github-annotations` flag that outputs GitHub Actions annotations:
+        ```
+        npx stepproof run --format=github-annotations
+        ```
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area of stepproof?
+      options:
+        - CLI commands (init, run, compare, etc.)
+        - Test definition format / schema
+        - CI integration (GitHub Actions, GitLab, etc.)
+        - Output format / reporting
+        - Configuration options
+        - Performance
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+      description: Other tools, workarounds, or approaches you've tried.
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Would you be willing to contribute this?
+      options:
+        - label: Yes, I'd like to open a PR for this

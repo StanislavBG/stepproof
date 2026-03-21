@@ -8,7 +8,7 @@
  *  4. Free features unaffected → no key needed
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { validate, guard, mintKey } from '@preflight/license';
+import { validate, guard, mintKey } from '@bilkobibitkov/preflight-license';
 
 // Mint a valid key using the default signing secret
 function validKey(org = 'test-org', days = 30): string {

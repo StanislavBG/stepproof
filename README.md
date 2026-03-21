@@ -13,8 +13,7 @@ You upgraded to `gpt-4o-mini`. Your LangSmith traces look fine. Three days later
 stepproof is what you run before you deploy.
 
 ```bash
-# Install from GitHub (npm package coming soon)
-npm install -g github:StanislavBG/stepproof
+npm install -g stepproof
 ```
 
 ---
@@ -84,6 +83,50 @@ Now break it — swap to a cheaper model, lower the pass rate. It fails:
 
 ---
 
+## Commands
+
+### `stepproof run <scenario>`
+
+Run a scenario file or directory of scenarios.
+
+```bash
+stepproof run classify.yaml
+stepproof run scenarios/
+stepproof run scenarios/ --format sarif --output results.sarif
+stepproof run scenarios/ --format junit --output results.xml
+```
+
+Flags:
+- `--format <format>` — output format: `terminal` (default), `sarif`, `junit`
+- `--output <file>` — write output to file instead of stdout
+
+### `stepproof init [dir]`
+
+Scaffold a starter scenario in the target directory. Defaults to `./scenarios/`.
+
+```bash
+stepproof init
+# Creates: ./scenarios/first-test.yaml
+
+stepproof init my-tests
+# Creates: ./my-tests/first-test.yaml
+```
+
+The generated `first-test.yaml` is a working example you can edit and run immediately.
+
+---
+
+## Environment Variables
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `ANTHROPIC_API_KEY` | For Anthropic steps | Authenticates calls to Claude models |
+| `OPENAI_API_KEY` | For OpenAI steps | Authenticates calls to GPT models |
+
+Only the keys for the providers you use in your scenarios are required.
+
+---
+
 ## CI integration
 
 ```yaml
@@ -96,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npm install -g github:StanislavBG/stepproof
+      - run: npm install -g stepproof
       - run: stepproof run scenarios/classify.yaml
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -116,55 +159,6 @@ Exit code 1 on regression. PR blocked. Done.
 | `regex` | Output matches this pattern |
 | `json_schema` | Output is valid JSON matching this schema |
 | `llm_judge` | A second LLM call evaluates the output (boolean verdict) |
-
----
-
-## How this is different from LangSmith / Braintrust / Langfuse
-
-| | stepproof | LangSmith / Braintrust |
-|--|-----------|------------------------|
-| When it runs | Before deploy (CI) | After deploy (production) |
-| What it answers | "Is my pipeline still correct?" | "What did my pipeline do?" |
-| Output | Pass/fail with exit code | Traces and dashboards |
-| Use case | Regression testing | Observability |
-
-They tell you what happened. We tell you whether to deploy.
-
-These are different jobs. Use both.
-
----
-
-## Scenarios
-
-See [`/examples`](./examples) for copy-paste ready scenarios:
-- [`simple-chain.yaml`](./examples/simple-chain.yaml) — basic prompt → response → assertion
-- [`tool-calling.yaml`](./examples/tool-calling.yaml) — verify tool selection and output
-- [`multi-turn.yaml`](./examples/multi-turn.yaml) — conversation with memory, verify consistency
-
----
-
-## Roadmap
-
-- **v0.1** (now): YAML scenarios, N iterations, 5 assertion types, exit code 1 on failure, OpenAI + Anthropic
-- **v0.2**: Baseline comparison (fail on regression from last run), GitHub Actions native action, provider comparison mode
-- **Cloud dashboard** (month 3–6): Persistent history, trend charts, team workspaces — never in the CLI
-
----
-
-## Contributing
-
-Issues and PRs welcome. The tool is and will remain free. Cloud features are the business model, not the CLI.
-
-```
-git clone https://github.com/StanislavBG/stepproof
-cd stepproof
-npm install
-npm test
-```
-
----
-
-*stepproof — because "I checked manually before the deploy" is not a test.*
 
 ---
 
@@ -222,19 +216,61 @@ Default output (no `--format` flag) is unchanged — human-readable terminal out
 
 ---
 
+## How this is different from LangSmith / Braintrust / Langfuse
+
+| | stepproof | LangSmith / Braintrust |
+|--|-----------|------------------------|
+| When it runs | Before deploy (CI) | After deploy (production) |
+| What it answers | "Is my pipeline still correct?" | "What did my pipeline do?" |
+| Output | Pass/fail with exit code | Traces and dashboards |
+| Use case | Regression testing | Observability |
+
+They tell you what happened. We tell you whether to deploy.
+
+These are different jobs. Use both.
+
+---
+
+## Scenarios
+
+See [`/examples`](./examples) for copy-paste ready scenarios:
+- [`simple-chain.yaml`](./examples/simple-chain.yaml) — basic prompt → response → assertion
+- [`tool-calling.yaml`](./examples/tool-calling.yaml) — verify tool selection and output
+- [`multi-turn.yaml`](./examples/multi-turn.yaml) — conversation with memory, verify consistency
+
+---
+
+## Roadmap
+
+- **v0.2.0** (current): YAML scenarios, N iterations, 5 assertion types, exit code 1 on failure, OpenAI + Anthropic, SARIF 2.1.0 + JUnit XML reporters, `stepproof init` scaffolding
+- **v0.3.0** (next): Baseline comparison (fail on regression from last run), GitHub Actions native action, provider comparison mode — run the same scenario against two models and diff the results
+- **Cloud dashboard** (month 3–6): Persistent history, trend charts, team workspaces — never in the CLI
+
+---
+
+## Contributing
+
+Issues and PRs welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for dev setup and guidelines. The tool is and will remain free. Cloud features are the business model, not the CLI.
+
+---
+
 ## Part of the Preflight suite
 
 stepproof is one tool in the **Preflight** AI Agent DevOps suite — local-first CLIs covering the full lifecycle from pre-deploy validation to production observability:
 
 | Tool | Purpose | Install |
 |------|---------|---------|
-| **stepproof** | Behavioral regression testing | `npm install -g github:StanislavBG/stepproof` |
-| **agent-comply** | EU AI Act compliance scanning | `npm install -g github:StanislavBG/agent-comply` |
-| **agent-gate** | Unified pre-deploy CI gate | `npm install -g github:StanislavBG/agent-gate` |
-| **agent-shift** | Config versioning + environment promotion | `npm install -g github:StanislavBG/agent-shift` |
-| **agent-trace** | Local observability — OTel traces in SQLite | `npm install -g github:StanislavBG/agent-trace` |
+| **stepproof** | Behavioral regression testing | `npm install -g stepproof` |
+| **agent-comply** | EU AI Act compliance scanning | `npm install -g agent-comply` |
+| **agent-gate** | Unified pre-deploy CI gate | `npm install -g agent-gate` |
+| **agent-shift** | Config versioning + environment promotion | `npm install -g agent-shift` |
+| **agent-trace** | Local observability — OTel traces in SQLite | `npm install -g agent-trace` |
 
 Install the full suite:
 ```bash
-npm install -g github:StanislavBG/agent-gate github:StanislavBG/stepproof github:StanislavBG/agent-comply github:StanislavBG/agent-shift github:StanislavBG/agent-trace
+npm install -g agent-gate stepproof agent-comply agent-shift agent-trace
 ```
+
+---
+
+*stepproof — because "I checked manually before the deploy" is not a test.*
