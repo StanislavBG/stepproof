@@ -9,6 +9,7 @@ import { formatSarif } from './reporters/sarif-reporter.js';
 import { formatJunit } from './reporters/junit-reporter.js';
 import * as fs from 'node:fs';
 import { guard } from '@preflight/license';
+import { runInit } from './commands/init.js';
 
 const program = new Command();
 
@@ -16,6 +17,13 @@ program
   .name('stepproof')
   .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
   .version('0.2.0');
+
+program
+  .command('init [dir]')
+  .description('Scaffold a starter scenario in ./scenarios/first-test.yaml')
+  .action((dir?: string) => {
+    runInit(dir);
+  });
 
 program
   .command('run <scenario>')
