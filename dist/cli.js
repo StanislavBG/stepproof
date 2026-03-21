@@ -18,7 +18,7 @@ program
     .command('run <scenario>')
     .description('Run a scenario YAML file and report pass rates per step')
     .option('-n, --iterations <number>', 'Number of iterations to run (overrides scenario file)', parseInt)
-    .option('-o, --output <file>', 'Path for JSON report output', 'stepproof-report.json')
+    .option('-o, --output <file>', 'Path for output file (JSON by default; SARIF or JUnit when --format is set)', 'stepproof-report.json')
     .option('--no-json', 'Skip JSON report output')
     .option('--quiet', 'Suppress terminal output (use with --output for CI)')
     .option('--format <format>', 'Output format: sarif, junit')

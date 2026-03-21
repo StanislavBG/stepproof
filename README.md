@@ -62,7 +62,7 @@ stepproof run classify.yaml
 Output:
 
 ```
-stepproof v0.1.0 — running "Intent classification" (10 iterations)
+stepproof v0.2.0 — running "Intent classification" (10 iterations)
 
   step: classify
     ✓ 9/10 passed (90.0%) — threshold: 90% ✓
