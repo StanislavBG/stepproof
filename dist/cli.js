@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { parseScenario } from './core/scenario-parser.js';
 import { runScenario } from './core/scenario-runner.js';
 import { writeJsonReport } from './reporters/json-reporter.js';
@@ -8,13 +9,96 @@ import { printReport } from './reporters/terminal-reporter.js';
 import { formatSarif } from './reporters/sarif-reporter.js';
 import { formatJunit } from './reporters/junit-reporter.js';
 import * as fs from 'node:fs';
-import { guard } from '@bilkobibitkov/preflight-license';
+import { guard, validate } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
+/* ── Usage-based monetization ───────────────────────────────────────── */
+const FREE_MONTHLY_LIMIT = 10;
+const UPGRADE_URL = 'https://buy.stripe.com/3cIbJ3fA8am122VcwE8k804';
+const CONFIG_DIR = path.join(os.homedir(), '.config', 'stepproof');
+const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
+const USAGE_FILE = path.join(CONFIG_DIR, 'usage.json');
+/** Read license key from STEPPROOF_KEY env var or ~/.config/stepproof/config.json */
+function getStepproofKey() {
+    const envKey = process.env.STEPPROOF_KEY;
+    if (envKey && envKey.trim())
+        return envKey.trim();
+    try {
+        if (fs.existsSync(CONFIG_FILE)) {
+            const raw = fs.readFileSync(CONFIG_FILE, 'utf8');
+            const parsed = JSON.parse(raw);
+            if (parsed.key && parsed.key.trim())
+                return parsed.key.trim();
+        }
+    }
+    catch {
+        // Corrupted config — ignore
+    }
+    return undefined;
+}
+/** Check if user has a valid pro license */
+function isProUser() {
+    const key = getStepproofKey();
+    if (!key)
+        return false;
+    const result = validate(key);
+    return result.valid && result.tier !== 'free';
+}
+/** Read current month's usage */
+function readUsage() {
+    const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+    try {
+        if (fs.existsSync(USAGE_FILE)) {
+            const raw = fs.readFileSync(USAGE_FILE, 'utf8');
+            const parsed = JSON.parse(raw);
+            if (parsed.month === currentMonth)
+                return parsed;
+        }
+    }
+    catch {
+        // Corrupted — reset
+    }
+    return { month: currentMonth, count: 0 };
+}
+/** Write usage record to disk */
+function writeUsage(record) {
+    try {
+        fs.mkdirSync(CONFIG_DIR, { recursive: true });
+        fs.writeFileSync(USAGE_FILE, JSON.stringify(record), 'utf8');
+    }
+    catch {
+        // Can't write — degrade gracefully
+    }
+}
+/** Check free limit before a run. Returns true if allowed, false if blocked. */
+function checkUsageLimit() {
+    if (isProUser())
+        return true;
+    const usage = readUsage();
+    if (usage.count >= FREE_MONTHLY_LIMIT) {
+        process.stderr.write(`\nYou've used ${FREE_MONTHLY_LIMIT}/${FREE_MONTHLY_LIMIT} free runs this month. ` +
+            `Upgrade to Stepproof Pro ($19/mo) for unlimited runs → ${UPGRADE_URL}\n\n`);
+        return false;
+    }
+    return true;
+}
+/** Increment usage after a successful free run and show remaining count */
+function trackUsageAfterRun() {
+    if (isProUser())
+        return;
+    const usage = readUsage();
+    usage.count += 1;
+    writeUsage(usage);
+    const remaining = FREE_MONTHLY_LIMIT - usage.count;
+    process.stderr.write(`\n${remaining}/${FREE_MONTHLY_LIMIT} free runs remaining this month.` +
+        (remaining <= 3 ? ` Unlock unlimited: ${UPGRADE_URL}` : '') +
+        '\n');
+}
+/* ── CLI ────────────────────────────────────────────────────────────── */
 const program = new Command();
 program
     .name('stepproof')
     .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-    .version('0.2.0')
+    .version('0.2.4')
     .addHelpText('after', `
 Examples:
   stepproof init                                        scaffold a starter scenario
@@ -28,7 +112,26 @@ program
     runInit(dir);
 });
 program
-    .command('run <scenario>')
+    .command('activate <key>')
+    .description('Store a license key for unlimited runs')
+    .action((key) => {
+    const result = validate(key);
+    if (!result.valid) {
+        process.stderr.write(`\nInvalid license key: ${result.reason}\n\n`);
+        process.exit(1);
+    }
+    try {
+        fs.mkdirSync(CONFIG_DIR, { recursive: true });
+        fs.writeFileSync(CONFIG_FILE, JSON.stringify({ key }), 'utf8');
+        console.log(`\nLicense activated (${result.tier} — ${result.org}). Unlimited runs enabled.\n`);
+    }
+    catch (e) {
+        process.stderr.write(`\nFailed to save license: ${e.message}\n\n`);
+        process.exit(1);
+    }
+});
+program
+    .command('run [scenario]')
     .description('Run a scenario YAML file and report pass rates per step')
     .option('-n, --iterations <number>', 'Number of iterations to run (overrides scenario file)', parseInt)
     .option('-o, --output <file>', 'Path for output file (JSON by default; SARIF or JUnit when --format is set)', 'stepproof-report.json')
@@ -49,6 +152,10 @@ program
     // License gate — check before running the scenario (avoid wasted API calls)
     if (opts.format === 'sarif' || opts.format === 'junit') {
         guard('team', { feature: `--format ${opts.format}` });
+    }
+    // Usage limit — check before running (avoid wasted API calls)
+    if (!checkUsageLimit()) {
+        process.exit(1);
     }
     // --format implies quiet (suppress terminal output) unless --quiet already set
     const isQuiet = opts.quiet || !!opts.format;
@@ -77,7 +184,7 @@ program
     }
     catch (statErr) {
         if (statErr.code === 'ENOENT') {
-            console.error(`\nScenario not found: ${resolvedPath}`);
+            console.error(`\nError: Scenario not found: ${resolvedPath}`);
             console.error("Run 'stepproof init' to scaffold a new scenario, or check the path.");
             process.exit(2);
         }
@@ -146,6 +253,8 @@ program
             console.error(`Warning: Could not write JSON report: ${e.message}`);
         }
     }
+    // Track usage after successful run completion
+    trackUsageAfterRun();
     // Exit 1 if any step below threshold — this is the CI gate
     if (!report.allPassed) {
         process.exit(1);
@@ -159,6 +268,21 @@ program.action(() => {
         process.exit(2);
     }
     program.help(); // exits 0
+});
+// Override commander's default error handler for better UX
+program.exitOverride((err) => {
+    if (err.code === 'commander.helpDisplayed' || err.code === 'commander.version') {
+        process.exit(err.exitCode ?? 0);
+    }
+    if (err.code === 'commander.missingArgument') {
+        const cmd = err.message.match(/'([^']+)'/)?.[1] ?? 'scenario';
+        process.stderr.write(`\nError: Missing required argument <${cmd}>\n`);
+        process.stderr.write(`Usage: stepproof run <scenario>\n`);
+        process.stderr.write(`\nQuick start:\n  stepproof init            scaffold a starter scenario\n  stepproof run ./scenarios/first-test.yaml\n\n`);
+        process.exit(2);
+    }
+    // All other commander errors: exit with the provided code
+    process.exit(err.exitCode ?? 1);
 });
 program.parse(process.argv);
 //# sourceMappingURL=cli.js.map
