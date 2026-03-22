@@ -13,7 +13,7 @@ import { guard, validate } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
 import { sendTelemetry } from './telemetry.js';
 
-const CLI_VERSION = '0.2.6';
+const CLI_VERSION = '0.2.7';
 
 /* ── Usage-based monetization ───────────────────────────────────────── */
 
@@ -85,8 +85,14 @@ function checkUsageLimit(): boolean {
   const usage = readUsage();
   if (usage.count >= FREE_MONTHLY_LIMIT) {
     process.stderr.write(
-      `\nYou've used ${FREE_MONTHLY_LIMIT}/${FREE_MONTHLY_LIMIT} free runs this month. ` +
-      `Upgrade to Stepproof Pro ($19/mo) for unlimited runs → ${UPGRADE_URL}\n\n`
+      `\n─────────────────────────────────────────────────────────────\n` +
+      `  You've used all ${FREE_MONTHLY_LIMIT} free runs this month.\n\n` +
+      `  Stepproof Pro ($19/mo) unlocks:\n` +
+      `    · Unlimited runs          · Test run dashboard\n` +
+      `    · PDF reports             · Slack alerts\n` +
+      `    · Full run history        · SARIF/JUnit CI output\n\n` +
+      `  Upgrade → ${UPGRADE_URL}\n` +
+      `─────────────────────────────────────────────────────────────\n\n`
     );
     return false;
   }
@@ -103,8 +109,11 @@ function trackUsageAfterRun(): void {
 
   const remaining = FREE_MONTHLY_LIMIT - usage.count;
   process.stderr.write(
-    `\n${remaining}/${FREE_MONTHLY_LIMIT} free runs remaining this month. ` +
-    `Upgrade to Stepproof Pro ($19/mo) for unlimited runs → ${UPGRADE_URL}\n`
+    `\n─────────────────────────────────────────────────────────────\n` +
+    `  ${remaining} of ${FREE_MONTHLY_LIMIT} free runs remaining this month.\n` +
+    `  Pro unlocks: unlimited runs · PDF reports · Slack alerts · run history\n` +
+    `  Upgrade → ${UPGRADE_URL}\n` +
+    `─────────────────────────────────────────────────────────────\n`
   );
 }
 
@@ -115,7 +124,7 @@ const program = new Command();
 program
   .name('stepproof')
   .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-  .version('0.2.6')
+  .version('0.2.7')
   .addHelpText('after', `
 Examples:
   stepproof init                                        scaffold a starter scenario
