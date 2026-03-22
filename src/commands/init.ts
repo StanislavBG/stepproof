@@ -4,17 +4,20 @@ import { resolve } from 'path';
 const SCENARIO_SCAFFOLD = `# stepproof scenario — edit this, then run: stepproof run ./scenarios/first-test.yaml
 name: First Test
 description: "Test your AI agent's response quality"
-iterations: 5
+iterations: 3
 
 steps:
   - id: step-1
+    provider: anthropic                    # "anthropic" or "openai"
+    model: claude-haiku-4-5-20251001       # model to test
     prompt: "Explain what you do in one sentence."
-    threshold: 0.8     # 80% of runs must pass
-    checks:
+    min_pass_rate: 0.8                     # 80% of iterations must pass
+    assertions:
       - type: contains
-        value: "AI"    # replace with text you expect in the response
+        value: "AI"                        # replace with text you expect in the response
 
-# More check types: contains, not_contains, regex, length_gt, length_lt
+# Assertion types: contains, not_contains, regex, json_schema, llm_judge
+# Set ANTHROPIC_API_KEY or OPENAI_API_KEY before running
 # Full docs: https://github.com/StanislavBG/stepproof
 `;
 

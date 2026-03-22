@@ -7,7 +7,7 @@ export function parseScenario(filePath: string): Scenario {
   try {
     content = fs.readFileSync(filePath, 'utf-8');
   } catch (e) {
-    throw new Error(`Cannot read scenario file: ${filePath}`);
+    throw new Error(`Cannot read scenario file: ${filePath}\n  Hint: Check the path, or run 'stepproof init' to scaffold a starter scenario.`);
   }
 
   let raw: unknown;

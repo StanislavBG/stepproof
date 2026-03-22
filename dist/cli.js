@@ -11,6 +11,8 @@ import { formatJunit } from './reporters/junit-reporter.js';
 import * as fs from 'node:fs';
 import { guard, validate } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
+import { sendTelemetry } from './telemetry.js';
+const CLI_VERSION = '0.2.5';
 /* ── Usage-based monetization ───────────────────────────────────────── */
 const FREE_MONTHLY_LIMIT = 10;
 const UPGRADE_URL = 'https://buy.stripe.com/3cIbJ3fA8am122VcwE8k804';
@@ -98,7 +100,7 @@ const program = new Command();
 program
     .name('stepproof')
     .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-    .version('0.2.4')
+    .version('0.2.5')
     .addHelpText('after', `
 Examples:
   stepproof init                                        scaffold a starter scenario
@@ -155,6 +157,7 @@ program
     }
     // Usage limit — check before running (avoid wasted API calls)
     if (!checkUsageLimit()) {
+        await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'rate_limited' });
         process.exit(1);
     }
     // --format implies quiet (suppress terminal output) unless --quiet already set
@@ -223,6 +226,7 @@ program
     }
     catch (e) {
         console.error(`\nError running scenario: ${e.message}`);
+        await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'error' });
         process.exit(2);
     }
     // Handle --format sarif / --format junit
@@ -257,8 +261,10 @@ program
     trackUsageAfterRun();
     // Exit 1 if any step below threshold — this is the CI gate
     if (!report.allPassed) {
+        await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'fail' });
         process.exit(1);
     }
+    await sendTelemetry({ command: 'run', success: true, version: CLI_VERSION, outcome: 'pass' });
     process.exit(0);
 });
 program.action(() => {
