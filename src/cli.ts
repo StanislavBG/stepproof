@@ -13,7 +13,7 @@ import { guard, validate } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
 import { sendTelemetry } from './telemetry.js';
 
-const CLI_VERSION = '0.2.5';
+const CLI_VERSION = '0.2.6';
 
 /* ── Usage-based monetization ───────────────────────────────────────── */
 
@@ -103,9 +103,8 @@ function trackUsageAfterRun(): void {
 
   const remaining = FREE_MONTHLY_LIMIT - usage.count;
   process.stderr.write(
-    `\n${remaining}/${FREE_MONTHLY_LIMIT} free runs remaining this month.` +
-    (remaining <= 3 ? ` Unlock unlimited: ${UPGRADE_URL}` : '') +
-    '\n'
+    `\n${remaining}/${FREE_MONTHLY_LIMIT} free runs remaining this month. ` +
+    `Upgrade to Stepproof Pro ($19/mo) for unlimited runs → ${UPGRADE_URL}\n`
   );
 }
 
@@ -116,7 +115,7 @@ const program = new Command();
 program
   .name('stepproof')
   .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-  .version('0.2.5')
+  .version('0.2.6')
   .addHelpText('after', `
 Examples:
   stepproof init                                        scaffold a starter scenario
