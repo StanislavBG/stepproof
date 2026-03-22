@@ -13,7 +13,7 @@ import { guard, validate } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
 import { sendTelemetry } from './telemetry.js';
 
-const CLI_VERSION = '0.2.8';
+const CLI_VERSION = '0.2.9';
 
 /* ── Usage-based monetization ───────────────────────────────────────── */
 
@@ -120,8 +120,8 @@ function trackUsageAfterRun(): void {
     msg =
       `\n─────────────────────────────────────────────────────────────\n` +
       `  ${used} of ${FREE_MONTHLY_LIMIT} free runs used — 1 left this month.\n\n` +
-      `  Don't hit the cap mid-sprint. Pro removes the limit and\n` +
-      `  adds CI integration so stepproof runs on every commit.\n` +
+      `  Don't hit the cap mid-sprint. Team tier removes the limit\n` +
+      `  and unlocks dashboard · PDF reports · Slack alerts · history.\n` +
       `  $19/mo → ${UPGRADE_URL}\n` +
       `─────────────────────────────────────────────────────────────\n`;
   } else if (remaining <= 5) {
@@ -129,8 +129,7 @@ function trackUsageAfterRun(): void {
     msg =
       `\n─────────────────────────────────────────────────────────────\n` +
       `  ${used} of ${FREE_MONTHLY_LIMIT} free runs used this month.\n` +
-      `  You're running stepproof regularly — that's when CI integration\n` +
-      `  starts paying off. Pro runs it automatically on every PR.\n` +
+      `  Team tier unlocks: dashboard · PDF reports · Slack alerts · full run history.\n` +
       `  $19/mo · Upgrade: ${UPGRADE_URL}\n` +
       `─────────────────────────────────────────────────────────────\n`;
   } else {
@@ -138,7 +137,7 @@ function trackUsageAfterRun(): void {
     msg =
       `\n─────────────────────────────────────────────────────────────\n` +
       `  Run ${used} of ${FREE_MONTHLY_LIMIT} free this month.\n` +
-      `  Pro adds CI integration, SARIF output, and run history.\n` +
+      `  Team tier unlocks: dashboard · PDF reports · Slack alerts · history.\n` +
       `  stepproof activate <key>  ·  Upgrade → ${UPGRADE_URL}\n` +
       `─────────────────────────────────────────────────────────────\n`;
   }
@@ -153,7 +152,7 @@ const program = new Command();
 program
   .name('stepproof')
   .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-  .version('0.2.8')
+  .version('0.2.9')
   .addHelpText('after', `
 Examples:
   stepproof init                                        scaffold a starter scenario
