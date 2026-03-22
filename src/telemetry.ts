@@ -17,7 +17,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as crypto from 'node:crypto';
 
-const TELEMETRY_URL = 'https://content-grade.onrender.com/api/telemetry';
+const TELEMETRY_URL = 'https://content-grade.onrender.com/api/telemetry/events';
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'stepproof');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 
@@ -62,15 +62,17 @@ export function sendTelemetry(payload: TelemetryPayload): Promise<void> {
     return Promise.resolve();
   }
 
-  const install_id = getOrCreateInstallId();
+  const installId = getOrCreateInstallId();
   const body = JSON.stringify({
-    install_id,
+    installId,
+    package: 'stepproof',
     event: 'run',
-    command: `stepproof ${payload.command}`,
+    command: payload.command,
     success: payload.success,
     version: payload.version,
     platform: process.platform,
     nodeVersion: process.version,
+    outcome: payload.outcome,
   });
 
   return new Promise<void>((resolve) => {
