@@ -12,7 +12,7 @@ import * as fs from 'node:fs';
 import { guard, validate } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
 import { sendTelemetry } from './telemetry.js';
-const CLI_VERSION = '0.2.7';
+const CLI_VERSION = '0.2.8';
 /* ── Usage-based monetization ───────────────────────────────────────── */
 const FREE_MONTHLY_LIMIT = 10;
 const UPGRADE_URL = 'https://buy.stripe.com/3cIbJ3fA8am122VcwE8k804';
@@ -78,37 +78,68 @@ function checkUsageLimit() {
     const usage = readUsage();
     if (usage.count >= FREE_MONTHLY_LIMIT) {
         process.stderr.write(`\n─────────────────────────────────────────────────────────────\n` +
-            `  You've used all ${FREE_MONTHLY_LIMIT} free runs this month.\n\n` +
-            `  Stepproof Pro ($19/mo) unlocks:\n` +
-            `    · Unlimited runs          · Test run dashboard\n` +
-            `    · PDF reports             · Slack alerts\n` +
-            `    · Full run history        · SARIF/JUnit CI output\n\n` +
-            `  Upgrade → ${UPGRADE_URL}\n` +
+            `  ✗  ${FREE_MONTHLY_LIMIT}/${FREE_MONTHLY_LIMIT} free runs used this month — this run didn't execute.\n\n` +
+            `  Stepproof Pro unblocks your workflow:\n` +
+            `  ├── Unlimited runs         — no monthly cap, ever\n` +
+            `  ├── CI integration         — run on every PR with exit 1 on failure\n` +
+            `  ├── SARIF/JUnit output     — native GitHub Security tab integration\n` +
+            `  ├── PDF reports            — shareable test run summaries\n` +
+            `  └── Full run history       — see if pass rates are improving over time\n\n` +
+            `  $19/mo, cancel anytime\n` +
+            `  → Upgrade: ${UPGRADE_URL}\n` +
+            `    Already have a key? stepproof activate <key>\n` +
             `─────────────────────────────────────────────────────────────\n\n`);
         return false;
     }
     return true;
 }
-/** Increment usage after a successful free run and show remaining count */
+/** Increment usage after a successful free run and show a state-based CTA */
 function trackUsageAfterRun() {
     if (isProUser())
         return;
     const usage = readUsage();
     usage.count += 1;
     writeUsage(usage);
-    const remaining = FREE_MONTHLY_LIMIT - usage.count;
-    process.stderr.write(`\n─────────────────────────────────────────────────────────────\n` +
-        `  ${remaining} of ${FREE_MONTHLY_LIMIT} free runs remaining this month.\n` +
-        `  Pro unlocks: unlimited runs · PDF reports · Slack alerts · run history\n` +
-        `  Upgrade → ${UPGRADE_URL}\n` +
-        `─────────────────────────────────────────────────────────────\n`);
+    const used = usage.count;
+    const remaining = FREE_MONTHLY_LIMIT - used;
+    let msg;
+    if (remaining === 1) {
+        // Nudge C — urgency (run 9 of 10)
+        msg =
+            `\n─────────────────────────────────────────────────────────────\n` +
+                `  ${used} of ${FREE_MONTHLY_LIMIT} free runs used — 1 left this month.\n\n` +
+                `  Don't hit the cap mid-sprint. Pro removes the limit and\n` +
+                `  adds CI integration so stepproof runs on every commit.\n` +
+                `  $19/mo → ${UPGRADE_URL}\n` +
+                `─────────────────────────────────────────────────────────────\n`;
+    }
+    else if (remaining <= 5) {
+        // Nudge B — feature angle (runs 5–8)
+        msg =
+            `\n─────────────────────────────────────────────────────────────\n` +
+                `  ${used} of ${FREE_MONTHLY_LIMIT} free runs used this month.\n` +
+                `  You're running stepproof regularly — that's when CI integration\n` +
+                `  starts paying off. Pro runs it automatically on every PR.\n` +
+                `  $19/mo · Upgrade: ${UPGRADE_URL}\n` +
+                `─────────────────────────────────────────────────────────────\n`;
+    }
+    else {
+        // Nudge A — lightweight (runs 1–4)
+        msg =
+            `\n─────────────────────────────────────────────────────────────\n` +
+                `  Run ${used} of ${FREE_MONTHLY_LIMIT} free this month.\n` +
+                `  Pro adds CI integration, SARIF output, and run history.\n` +
+                `  stepproof activate <key>  ·  Upgrade → ${UPGRADE_URL}\n` +
+                `─────────────────────────────────────────────────────────────\n`;
+    }
+    process.stderr.write(msg);
 }
 /* ── CLI ────────────────────────────────────────────────────────────── */
 const program = new Command();
 program
     .name('stepproof')
     .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-    .version('0.2.7')
+    .version('0.2.8')
     .addHelpText('after', `
 Examples:
   stepproof init                                        scaffold a starter scenario
