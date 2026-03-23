@@ -12,7 +12,7 @@ import * as fs from 'node:fs';
 import { guard, validate } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
 import { sendTelemetry } from './telemetry.js';
-const CLI_VERSION = '0.2.13';
+const CLI_VERSION = '0.2.14';
 /* ── Usage-based monetization (Preflight Suite — shared) ────────────── */
 const TOOL_NAME = 'stepproof';
 const FREE_MONTHLY_LIMIT = 50;
@@ -90,7 +90,7 @@ function checkUsageLimit() {
     return true;
 }
 /** Increment usage after a successful free run and show a state-based CTA */
-function trackUsageAfterRun() {
+async function trackUsageAfterRun() {
     if (isProUser())
         return;
     const usage = readSharedUsage();
@@ -100,25 +100,32 @@ function trackUsageAfterRun() {
     const used = usage.total;
     const remaining = FREE_MONTHLY_LIMIT - used;
     let msg;
+    let outcome;
     if (remaining === 0) {
         msg = `\n  ${used}/${FREE_MONTHLY_LIMIT} free Preflight runs used — cap reached.\n` +
             `  Upgrade to Team for unlimited runs: ${UPGRADE_URL}\n\n`;
+        outcome = 'upgrade_shown_cap';
     }
     else if (remaining <= 5) {
         msg = `\n  ${used}/${FREE_MONTHLY_LIMIT} free Preflight runs used — ${remaining} left this month.\n` +
             `  Team tier removes the cap · $49/mo → ${UPGRADE_URL}\n\n`;
+        outcome = 'upgrade_shown_warning';
     }
     else {
         msg = `\n  Run ${used} of ${FREE_MONTHLY_LIMIT} free Preflight runs this month.\n\n`;
+        outcome = 'usage_tracked';
     }
     process.stderr.write(msg);
+    if (outcome.startsWith('upgrade_shown')) {
+        await sendTelemetry({ command: 'run', success: true, version: CLI_VERSION, outcome, exit_code: 0 });
+    }
 }
 /* ── CLI ────────────────────────────────────────────────────────────── */
 const program = new Command();
 program
     .name('stepproof')
     .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-    .version('0.2.13')
+    .version('0.2.14')
     .addHelpText('after', `
 Examples:
   stepproof init                                        scaffold a starter scenario
@@ -128,25 +135,29 @@ Examples:
 program
     .command('init [dir]')
     .description('Scaffold a starter scenario in ./scenarios/first-test.yaml')
-    .action((dir) => {
+    .action(async (dir) => {
     runInit(dir);
+    await sendTelemetry({ command: 'init', success: true, version: CLI_VERSION, outcome: 'scaffold' });
 });
 program
     .command('activate <key>')
     .description('Store a license key for unlimited runs (applies to all Preflight Suite tools)')
-    .action((key) => {
+    .action(async (key) => {
     const result = validate(key);
     if (!result.valid) {
         process.stderr.write(`\nInvalid license key: ${result.reason}\n\n`);
+        await sendTelemetry({ command: 'activate', success: false, version: CLI_VERSION, outcome: 'invalid_key', exit_code: 1 });
         process.exit(1);
     }
     try {
         fs.mkdirSync(SUITE_DIR, { recursive: true });
         fs.writeFileSync(SUITE_LICENSE_FILE, JSON.stringify({ key }), 'utf8');
         console.log(`\nLicense activated (${result.tier} — ${result.org}). Unlimited runs enabled across all Preflight Suite tools.\n`);
+        await sendTelemetry({ command: 'activate', success: true, version: CLI_VERSION, outcome: 'activated', exit_code: 0 });
     }
     catch (e) {
         process.stderr.write(`\nFailed to save license: ${e.message}\n\n`);
+        await sendTelemetry({ command: 'activate', success: false, version: CLI_VERSION, outcome: 'save_failed', exit_code: 1 });
         process.exit(1);
     }
 });
@@ -277,7 +288,7 @@ program
         }
     }
     // Track usage after successful run completion
-    trackUsageAfterRun();
+    await trackUsageAfterRun();
     // Exit 1 if any step below threshold — this is the CI gate
     if (!report.allPassed) {
         await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'fail', exit_code: 1, duration_ms: Date.now() - startMs });
