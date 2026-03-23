@@ -13,7 +13,7 @@ import { guard, validate } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
 import { sendTelemetry } from './telemetry.js';
 
-const CLI_VERSION = '0.2.11';
+const CLI_VERSION = '0.2.12';
 
 /* ── Usage-based monetization ───────────────────────────────────────── */
 
@@ -152,7 +152,7 @@ const program = new Command();
 program
   .name('stepproof')
   .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-  .version('0.2.11')
+  .version('0.2.12')
   .addHelpText('after', `
 Examples:
   stepproof init                                        scaffold a starter scenario
@@ -220,8 +220,9 @@ program
     }
 
     // Usage limit — check before running (avoid wasted API calls)
+    const startMs = Date.now();
     if (!checkUsageLimit()) {
-      await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'rate_limited' });
+      await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'rate_limited', exit_code: 1, duration_ms: Date.now() - startMs });
       process.exit(1);
     }
 
@@ -296,7 +297,7 @@ program
       });
     } catch (e) {
       console.error(`\nError running scenario: ${(e as Error).message}`);
-      await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'error' });
+      await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'error', exit_code: 2, duration_ms: Date.now() - startMs });
       process.exit(2);
     }
 
@@ -334,11 +335,11 @@ program
 
     // Exit 1 if any step below threshold — this is the CI gate
     if (!report.allPassed) {
-      await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'fail' });
+      await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'fail', exit_code: 1, duration_ms: Date.now() - startMs });
       process.exit(1);
     }
 
-    await sendTelemetry({ command: 'run', success: true, version: CLI_VERSION, outcome: 'pass' });
+    await sendTelemetry({ command: 'run', success: true, version: CLI_VERSION, outcome: 'pass', exit_code: 0, duration_ms: Date.now() - startMs });
     process.exit(0);
   });
 

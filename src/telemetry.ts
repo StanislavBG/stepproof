@@ -51,6 +51,10 @@ export interface TelemetryPayload {
   version: string;
   /** Optional: outcome label — 'pass' | 'fail' | 'error' */
   outcome?: string;
+  /** Process exit code */
+  exit_code?: number;
+  /** Command wall-clock duration in milliseconds */
+  duration_ms?: number;
 }
 
 /**
@@ -73,6 +77,8 @@ export function sendTelemetry(payload: TelemetryPayload): Promise<void> {
     platform: process.platform,
     nodeVersion: process.version,
     outcome: payload.outcome,
+    exit_code: payload.exit_code,
+    duration_ms: payload.duration_ms,
   });
 
   return new Promise<void>((resolve) => {
