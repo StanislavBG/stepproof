@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versioning: [S
 
 ---
 
+## [0.2.20] — 2026-03-22
+
+### Changed
+- **Upgrade CTA copy rewritten** — hard gate now reads "You've used your 3 free checks today. Upgrade to Stepproof Pro for unlimited daily checks" with correct Stepproof-specific Stripe URL (`3cIbJ3fA8am122VcwE8k804`)
+- Free limit enforcement switched from 50/month suite-wide to **3/day per-tool** — more intuitive for solo developers, resets at midnight UTC
+- Daily counter (`day_total`) added to shared usage schema; backward-compatible (missing field defaults to 0)
+- Removed incorrect "Team · $49/mo" messaging — Stepproof standalone is **$19/mo**
+
+### Fixed
+- Stripe upgrade URL was pointing to agent-comply checkout page — now correctly targets Stepproof Pro product
+
+---
+
 ## [0.2.1] — 2026-03-19
 
 ### Fixed
