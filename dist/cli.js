@@ -12,7 +12,7 @@ import * as fs from 'node:fs';
 import { guard, validate } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
 import { sendTelemetry } from './telemetry.js';
-const CLI_VERSION = '0.2.15';
+const CLI_VERSION = '0.2.17';
 /* ── Usage-based monetization (Preflight Suite — shared) ────────────── */
 const TOOL_NAME = 'stepproof';
 const FREE_MONTHLY_LIMIT = 50;
@@ -120,7 +120,7 @@ async function trackUsageAfterRun() {
     }
     process.stderr.write(msg);
     if (outcome.startsWith('upgrade_shown')) {
-        await sendTelemetry({ command: 'run', success: true, version: CLI_VERSION, outcome, exit_code: 0 });
+        await sendTelemetry({ command: 'cta_shown', success: true, version: CLI_VERSION, outcome: 'cta_shown', exit_code: 0, is_pro: false });
     }
 }
 /* ── CLI ────────────────────────────────────────────────────────────── */
@@ -128,7 +128,7 @@ const program = new Command();
 program
     .name('stepproof')
     .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-    .version('0.2.14')
+    .version('0.2.17')
     .addHelpText('after', `
 Examples:
   stepproof init                                        scaffold a starter scenario
@@ -156,7 +156,7 @@ program
         fs.mkdirSync(SUITE_DIR, { recursive: true });
         fs.writeFileSync(SUITE_LICENSE_FILE, JSON.stringify({ key }), 'utf8');
         console.log(`\nLicense activated (${result.tier} — ${result.org}). Unlimited runs enabled across all Preflight Suite tools.\n`);
-        await sendTelemetry({ command: 'activate', success: true, version: CLI_VERSION, outcome: 'activated', exit_code: 0 });
+        await sendTelemetry({ command: 'activate', success: true, version: CLI_VERSION, outcome: 'license_activated', exit_code: 0, is_pro: true });
     }
     catch (e) {
         process.stderr.write(`\nFailed to save license: ${e.message}\n\n`);
@@ -187,10 +187,12 @@ program
     if (opts.format === 'sarif' || opts.format === 'junit') {
         guard('team', { feature: `--format ${opts.format}` });
     }
+    // Capture pro status once — used for telemetry throughout this command
+    const isPro = isProUser();
     // Usage limit — check before running (avoid wasted API calls)
     const startMs = Date.now();
     if (!checkUsageLimit()) {
-        await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'rate_limited', exit_code: 1, duration_ms: Date.now() - startMs });
+        await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'rate_limited', exit_code: 1, duration_ms: Date.now() - startMs, is_pro: isPro });
         process.exit(1);
     }
     // --format implies quiet (suppress terminal output) unless --quiet already set
@@ -259,7 +261,7 @@ program
     }
     catch (e) {
         console.error(`\nError running scenario: ${e.message}`);
-        await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'error', exit_code: 2, duration_ms: Date.now() - startMs });
+        await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'error', exit_code: 2, duration_ms: Date.now() - startMs, is_pro: isPro });
         process.exit(2);
     }
     // Handle --format sarif / --format junit
@@ -294,10 +296,10 @@ program
     await trackUsageAfterRun();
     // Exit 1 if any step below threshold — this is the CI gate
     if (!report.allPassed) {
-        await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'fail', exit_code: 1, duration_ms: Date.now() - startMs });
+        await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'fail', exit_code: 1, duration_ms: Date.now() - startMs, is_pro: isPro });
         process.exit(1);
     }
-    await sendTelemetry({ command: 'run', success: true, version: CLI_VERSION, outcome: 'pass', exit_code: 0, duration_ms: Date.now() - startMs });
+    await sendTelemetry({ command: 'run', success: true, version: CLI_VERSION, outcome: 'pass', exit_code: 0, duration_ms: Date.now() - startMs, is_pro: isPro });
     process.exit(0);
 });
 program.action(() => {

@@ -15,12 +15,14 @@ export interface TelemetryPayload {
     command: string;
     success: boolean;
     version: string;
-    /** Optional: outcome label — 'pass' | 'fail' | 'error' */
+    /** Optional: outcome label — 'pass' | 'fail' | 'error' | 'license_activated' | 'cta_shown' */
     outcome?: string;
     /** Process exit code */
     exit_code?: number;
     /** Command wall-clock duration in milliseconds */
     duration_ms?: number;
+    /** True if user has a valid pro license at time of event */
+    is_pro?: boolean;
 }
 /**
  * Send a telemetry ping. Returns a Promise that resolves within 3 seconds.

@@ -64,6 +64,7 @@ export function sendTelemetry(payload) {
         outcome: payload.outcome,
         exit_code: payload.exit_code,
         duration_ms: payload.duration_ms,
+        is_pro: payload.is_pro,
     });
     return new Promise((resolve) => {
         const timeout = setTimeout(resolve, 3000);
