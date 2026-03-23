@@ -133,7 +133,7 @@ async function trackUsageAfterRun(): Promise<void> {
   process.stderr.write(msg);
 
   if (outcome.startsWith('upgrade_shown')) {
-    await sendTelemetry({ command: 'run', success: true, version: CLI_VERSION, outcome, exit_code: 0 });
+    await sendTelemetry({ command: 'cta_shown', success: true, version: CLI_VERSION, outcome: 'cta_shown', exit_code: 0, is_pro: false });
   }
 }
 
@@ -174,7 +174,7 @@ program
       fs.mkdirSync(SUITE_DIR, { recursive: true });
       fs.writeFileSync(SUITE_LICENSE_FILE, JSON.stringify({ key }), 'utf8');
       console.log(`\nLicense activated (${result.tier} — ${result.org}). Unlimited runs enabled across all Preflight Suite tools.\n`);
-      await sendTelemetry({ command: 'activate', success: true, version: CLI_VERSION, outcome: 'activated', exit_code: 0 });
+      await sendTelemetry({ command: 'activate', success: true, version: CLI_VERSION, outcome: 'license_activated', exit_code: 0, is_pro: true });
     } catch (e) {
       process.stderr.write(`\nFailed to save license: ${(e as Error).message}\n\n`);
       await sendTelemetry({ command: 'activate', success: false, version: CLI_VERSION, outcome: 'save_failed', exit_code: 1 });
@@ -215,10 +215,13 @@ program
       guard('team', { feature: `--format ${opts.format}` });
     }
 
+    // Capture pro status once — used for telemetry throughout this command
+    const isPro = isProUser();
+
     // Usage limit — check before running (avoid wasted API calls)
     const startMs = Date.now();
     if (!checkUsageLimit()) {
-      await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'rate_limited', exit_code: 1, duration_ms: Date.now() - startMs });
+      await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'rate_limited', exit_code: 1, duration_ms: Date.now() - startMs, is_pro: isPro });
       process.exit(1);
     }
 
@@ -293,7 +296,7 @@ program
       });
     } catch (e) {
       console.error(`\nError running scenario: ${(e as Error).message}`);
-      await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'error', exit_code: 2, duration_ms: Date.now() - startMs });
+      await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'error', exit_code: 2, duration_ms: Date.now() - startMs, is_pro: isPro });
       process.exit(2);
     }
 
@@ -331,11 +334,11 @@ program
 
     // Exit 1 if any step below threshold — this is the CI gate
     if (!report.allPassed) {
-      await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'fail', exit_code: 1, duration_ms: Date.now() - startMs });
+      await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'fail', exit_code: 1, duration_ms: Date.now() - startMs, is_pro: isPro });
       process.exit(1);
     }
 
-    await sendTelemetry({ command: 'run', success: true, version: CLI_VERSION, outcome: 'pass', exit_code: 0, duration_ms: Date.now() - startMs });
+    await sendTelemetry({ command: 'run', success: true, version: CLI_VERSION, outcome: 'pass', exit_code: 0, duration_ms: Date.now() - startMs, is_pro: isPro });
     process.exit(0);
   });
 

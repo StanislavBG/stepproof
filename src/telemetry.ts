@@ -49,12 +49,14 @@ export interface TelemetryPayload {
   command: string;
   success: boolean;
   version: string;
-  /** Optional: outcome label — 'pass' | 'fail' | 'error' */
+  /** Optional: outcome label — 'pass' | 'fail' | 'error' | 'license_activated' | 'cta_shown' */
   outcome?: string;
   /** Process exit code */
   exit_code?: number;
   /** Command wall-clock duration in milliseconds */
   duration_ms?: number;
+  /** True if user has a valid pro license at time of event */
+  is_pro?: boolean;
 }
 
 /**
@@ -79,6 +81,7 @@ export function sendTelemetry(payload: TelemetryPayload): Promise<void> {
     outcome: payload.outcome,
     exit_code: payload.exit_code,
     duration_ms: payload.duration_ms,
+    is_pro: payload.is_pro,
   });
 
   return new Promise<void>((resolve) => {
