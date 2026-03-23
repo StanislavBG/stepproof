@@ -12,7 +12,7 @@ import * as fs from 'node:fs';
 import { guard, validate } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
 import { sendTelemetry } from './telemetry.js';
-const CLI_VERSION = '0.2.17';
+const CLI_VERSION = '0.2.19';
 /* ── Usage-based monetization (Preflight Suite — shared) ────────────── */
 const TOOL_NAME = 'stepproof';
 const FREE_MONTHLY_LIMIT = 50;
@@ -99,27 +99,18 @@ async function trackUsageAfterRun() {
     writeSharedUsage(usage);
     const used = usage.total;
     const remaining = FREE_MONTHLY_LIMIT - used;
-    let msg;
-    let outcome;
+    // Show CTA only when >80% of monthly quota used (remaining < 10 of 50)
     if (remaining === 0) {
-        msg = `\n  ${used}/${FREE_MONTHLY_LIMIT} free runs used — next run will be blocked.\n` +
-            `  Upgrade to Team for unlimited: ${UPGRADE_URL}\n` +
-            `  Already have a key? stepproof activate <key>\n\n`;
-        outcome = 'upgrade_shown_cap';
+        process.stderr.write(`\n  ${used}/${FREE_MONTHLY_LIMIT} free runs used — next run will be blocked.\n` +
+            `  Upgrade to Pro for unlimited runs: ${UPGRADE_URL}\n` +
+            `  Already have a key? stepproof activate <key>\n\n`);
+        await sendTelemetry({ command: 'cta_shown', success: true, version: CLI_VERSION, outcome: 'cta_shown', exit_code: 0, is_pro: false });
     }
-    else if (remaining <= 5) {
+    else if (remaining <= 10) {
         const runWord = remaining === 1 ? 'run' : 'runs';
-        msg = `\n  ${used}/${FREE_MONTHLY_LIMIT} free Preflight runs used — ${remaining} ${runWord} left.\n` +
-            `  Don't let CI break unexpectedly · Team: $49/mo → ${UPGRADE_URL}\n` +
-            `  Already have a key? stepproof activate <key>\n\n`;
-        outcome = 'upgrade_shown_warning';
-    }
-    else {
-        msg = `\n  Run ${used} of ${FREE_MONTHLY_LIMIT} free Preflight runs this month.\n\n`;
-        outcome = 'usage_tracked';
-    }
-    process.stderr.write(msg);
-    if (outcome.startsWith('upgrade_shown')) {
+        process.stderr.write(`\n  ${used}/${FREE_MONTHLY_LIMIT} free runs used this month — ${remaining} ${runWord} left.\n` +
+            `  Unlock unlimited runs for $19/mo → ${UPGRADE_URL}\n` +
+            `  Already have a key? stepproof activate <key>\n\n`);
         await sendTelemetry({ command: 'cta_shown', success: true, version: CLI_VERSION, outcome: 'cta_shown', exit_code: 0, is_pro: false });
     }
 }
@@ -128,7 +119,7 @@ const program = new Command();
 program
     .name('stepproof')
     .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-    .version('0.2.17')
+    .version('0.2.19')
     .addHelpText('after', `
 Examples:
   stepproof init                                        scaffold a starter scenario
