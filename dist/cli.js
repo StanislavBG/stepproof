@@ -12,7 +12,7 @@ import * as fs from 'node:fs';
 import { guard, validate } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
 import { sendTelemetry } from './telemetry.js';
-const CLI_VERSION = '0.2.20';
+const CLI_VERSION = '0.2.21';
 /* ── Usage-based monetization (Preflight Suite — shared) ────────────── */
 const TOOL_NAME = 'stepproof';
 const FREE_MONTHLY_LIMIT = 50;
@@ -129,7 +129,7 @@ const program = new Command();
 program
     .name('stepproof')
     .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-    .version('0.2.20')
+    .version('0.2.21')
     .addHelpText('after', `
 Examples:
   stepproof init                                        scaffold a starter scenario
