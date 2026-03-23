@@ -105,7 +105,7 @@ function checkUsageLimit(): boolean {
   if (usage.day_total >= FREE_DAILY_LIMIT) {
     process.stderr.write(
       `\n  You've used your ${FREE_DAILY_LIMIT} free checks today.\n` +
-      `  Upgrade to Team tier ($49/mo) for unlimited daily checks: ${UPGRADE_URL}\n` +
+      `  Upgrade to Stepproof Pro for unlimited daily checks: ${UPGRADE_URL}\n` +
       `  — or run \`stepproof activate <your-license-key>\` to activate.\n\n`
     );
     return false;

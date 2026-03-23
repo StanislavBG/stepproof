@@ -112,14 +112,14 @@ async function trackUsageAfterRun() {
     // Show CTA only when >80% of monthly quota used (remaining < 10 of 50)
     if (remaining === 0) {
         process.stderr.write(`\n  ${used}/${FREE_MONTHLY_LIMIT} free runs used — next run will be blocked.\n` +
-            `  Upgrade to Pro for unlimited runs: ${UPGRADE_URL}\n` +
+            `  Upgrade to Team tier ($49/mo) for unlimited runs: ${UPGRADE_URL}\n` +
             `  Already have a key? stepproof activate <key>\n\n`);
         await sendTelemetry({ command: 'cta_shown', success: true, version: CLI_VERSION, outcome: 'cta_shown', exit_code: 0, is_pro: false });
     }
     else if (remaining <= 10) {
         const runWord = remaining === 1 ? 'run' : 'runs';
         process.stderr.write(`\n  ${used}/${FREE_MONTHLY_LIMIT} free runs used this month — ${remaining} ${runWord} left.\n` +
-            `  Unlock unlimited runs for $19/mo → ${UPGRADE_URL}\n` +
+            `  Upgrade to Team tier ($49/mo) for unlimited runs → ${UPGRADE_URL}\n` +
             `  Already have a key? stepproof activate <key>\n\n`);
         await sendTelemetry({ command: 'cta_shown', success: true, version: CLI_VERSION, outcome: 'cta_shown', exit_code: 0, is_pro: false });
     }
@@ -129,7 +129,7 @@ const program = new Command();
 program
     .name('stepproof')
     .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-    .version('0.2.19')
+    .version('0.2.20')
     .addHelpText('after', `
 Examples:
   stepproof init                                        scaffold a starter scenario
