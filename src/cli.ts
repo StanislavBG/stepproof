@@ -13,13 +13,14 @@ import { guard, validate } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
 import { sendTelemetry } from './telemetry.js';
 
-const CLI_VERSION = '0.2.19';
+const CLI_VERSION = '0.2.20';
 
 /* ── Usage-based monetization (Preflight Suite — shared) ────────────── */
 
 const TOOL_NAME = 'stepproof' as const;
 const FREE_MONTHLY_LIMIT = 50;
-const UPGRADE_URL = 'https://buy.stripe.com/28E00l73Ccu9ePH1S08k802';
+const FREE_DAILY_LIMIT = 3;
+const UPGRADE_URL = 'https://buy.stripe.com/3cIbJ3fA8am122VcwE8k804';
 
 // Shared suite directory
 const SUITE_DIR = path.join(os.homedir(), '.preflight-suite');
@@ -33,6 +34,8 @@ const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 interface SharedUsage {
   month: string;  // YYYY-MM
   total: number;
+  day: string;       // YYYY-MM-DD
+  day_total: number; // resets each calendar day
   tools: {
     stepproof: number;
     'agent-comply': number;
@@ -67,16 +70,24 @@ function isProUser(): boolean {
   return result.valid && result.tier !== 'free';
 }
 
-/** Read shared suite usage for the current month */
+/** Read shared suite usage for the current month, resetting daily counter if needed */
 function readSharedUsage(): SharedUsage {
   const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentDay = new Date().toISOString().slice(0, 10);
   try {
     if (fs.existsSync(SUITE_USAGE_FILE)) {
       const parsed = JSON.parse(fs.readFileSync(SUITE_USAGE_FILE, 'utf8')) as SharedUsage;
-      if (parsed.month === currentMonth) return parsed;
+      if (parsed.month === currentMonth) {
+        if (parsed.day !== currentDay) {
+          parsed.day = currentDay;
+          parsed.day_total = 0;
+        }
+        if (parsed.day_total === undefined) parsed.day_total = 0;
+        return parsed;
+      }
     }
   } catch { /* corrupted — reset */ }
-  return { month: currentMonth, total: 0, tools: { stepproof: 0, 'agent-comply': 0, 'agent-gate': 0 } };
+  return { month: currentMonth, total: 0, day: currentDay, day_total: 0, tools: { stepproof: 0, 'agent-comply': 0, 'agent-gate': 0 } };
 }
 
 /** Write shared usage to ~/.preflight-suite/usage.json */
@@ -91,11 +102,11 @@ function writeSharedUsage(record: SharedUsage): void {
 function checkUsageLimit(): boolean {
   if (isProUser()) return true;
   const usage = readSharedUsage();
-  if (usage.total >= FREE_MONTHLY_LIMIT) {
+  if (usage.day_total >= FREE_DAILY_LIMIT) {
     process.stderr.write(
-      `\n  Cap reached — CI blocked. Upgrade to keep tests running.\n` +
-      `  Team: unlimited runs · $49/mo → ${UPGRADE_URL}\n` +
-      `  Already have a key? stepproof activate <key>\n\n`
+      `\n  You've used your ${FREE_DAILY_LIMIT} free checks today.\n` +
+      `  Upgrade to Stepproof Pro for unlimited daily checks: ${UPGRADE_URL}\n` +
+      `  — or run \`stepproof activate <your-license-key>\` to activate.\n\n`
     );
     return false;
   }
@@ -107,6 +118,7 @@ async function trackUsageAfterRun(): Promise<void> {
   if (isProUser()) return;
   const usage = readSharedUsage();
   usage.total += 1;
+  usage.day_total += 1;
   usage.tools[TOOL_NAME] = (usage.tools[TOOL_NAME] ?? 0) + 1;
   writeSharedUsage(usage);
 
