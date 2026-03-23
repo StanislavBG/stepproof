@@ -13,90 +13,89 @@ import { guard, validate } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
 import { sendTelemetry } from './telemetry.js';
 
-const CLI_VERSION = '0.2.12';
+const CLI_VERSION = '0.2.13';
 
-/* ── Usage-based monetization ───────────────────────────────────────── */
+/* ── Usage-based monetization (Preflight Suite — shared) ────────────── */
 
-const FREE_MONTHLY_LIMIT = 10;
-const UPGRADE_URL = 'https://buy.stripe.com/3cIbJ3fA8am122VcwE8k804';
+const TOOL_NAME = 'stepproof' as const;
+const FREE_MONTHLY_LIMIT = 50;
+const UPGRADE_URL = 'https://buy.stripe.com/28E00l73Ccu9ePH1S08k802';
+
+// Shared suite directory
+const SUITE_DIR = path.join(os.homedir(), '.preflight-suite');
+const SUITE_USAGE_FILE = path.join(SUITE_DIR, 'usage.json');
+const SUITE_LICENSE_FILE = path.join(SUITE_DIR, 'license.json');
+
+// Legacy per-tool config dir (kept for backwards-compat reads)
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'stepproof');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
-const USAGE_FILE = path.join(CONFIG_DIR, 'usage.json');
 
-interface UsageRecord {
+interface SharedUsage {
   month: string;  // YYYY-MM
-  count: number;
+  total: number;
+  tools: {
+    stepproof: number;
+    'agent-comply': number;
+    'agent-gate': number;
+  };
 }
 
-/** Read license key from STEPPROOF_KEY env var or ~/.config/stepproof/config.json */
-function getStepproofKey(): string | undefined {
+/** Read license key: env var → shared suite → legacy tool config */
+function getLicenseKey(): string | undefined {
   const envKey = process.env.STEPPROOF_KEY;
-  if (envKey && envKey.trim()) return envKey.trim();
-
+  if (envKey?.trim()) return envKey.trim();
+  try {
+    if (fs.existsSync(SUITE_LICENSE_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(SUITE_LICENSE_FILE, 'utf8')) as { key?: string };
+      if (parsed.key?.trim()) return parsed.key.trim();
+    }
+  } catch { /* ignore */ }
   try {
     if (fs.existsSync(CONFIG_FILE)) {
-      const raw = fs.readFileSync(CONFIG_FILE, 'utf8');
-      const parsed = JSON.parse(raw) as { key?: string };
-      if (parsed.key && parsed.key.trim()) return parsed.key.trim();
+      const parsed = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) as { key?: string };
+      if (parsed.key?.trim()) return parsed.key.trim();
     }
-  } catch {
-    // Corrupted config — ignore
-  }
+  } catch { /* ignore */ }
   return undefined;
 }
 
 /** Check if user has a valid pro license */
 function isProUser(): boolean {
-  const key = getStepproofKey();
+  const key = getLicenseKey();
   if (!key) return false;
   const result = validate(key);
   return result.valid && result.tier !== 'free';
 }
 
-/** Read current month's usage */
-function readUsage(): UsageRecord {
-  const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+/** Read shared suite usage for the current month */
+function readSharedUsage(): SharedUsage {
+  const currentMonth = new Date().toISOString().slice(0, 7);
   try {
-    if (fs.existsSync(USAGE_FILE)) {
-      const raw = fs.readFileSync(USAGE_FILE, 'utf8');
-      const parsed = JSON.parse(raw) as UsageRecord;
+    if (fs.existsSync(SUITE_USAGE_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(SUITE_USAGE_FILE, 'utf8')) as SharedUsage;
       if (parsed.month === currentMonth) return parsed;
     }
-  } catch {
-    // Corrupted — reset
-  }
-  return { month: currentMonth, count: 0 };
+  } catch { /* corrupted — reset */ }
+  return { month: currentMonth, total: 0, tools: { stepproof: 0, 'agent-comply': 0, 'agent-gate': 0 } };
 }
 
-/** Write usage record to disk */
-function writeUsage(record: UsageRecord): void {
+/** Write shared usage to ~/.preflight-suite/usage.json */
+function writeSharedUsage(record: SharedUsage): void {
   try {
-    fs.mkdirSync(CONFIG_DIR, { recursive: true });
-    fs.writeFileSync(USAGE_FILE, JSON.stringify(record), 'utf8');
-  } catch {
-    // Can't write — degrade gracefully
-  }
+    fs.mkdirSync(SUITE_DIR, { recursive: true });
+    fs.writeFileSync(SUITE_USAGE_FILE, JSON.stringify(record, null, 2), 'utf8');
+  } catch { /* degrade gracefully */ }
 }
 
 /** Check free limit before a run. Returns true if allowed, false if blocked. */
 function checkUsageLimit(): boolean {
   if (isProUser()) return true;
-
-  const usage = readUsage();
-  if (usage.count >= FREE_MONTHLY_LIMIT) {
+  const usage = readSharedUsage();
+  if (usage.total >= FREE_MONTHLY_LIMIT) {
     process.stderr.write(
-      `\n─────────────────────────────────────────────────────────────\n` +
-      `  ✗  ${FREE_MONTHLY_LIMIT}/${FREE_MONTHLY_LIMIT} free runs used this month — this run didn't execute.\n\n` +
-      `  Stepproof Pro unblocks your workflow:\n` +
-      `  ├── Unlimited runs         — no monthly cap, ever\n` +
-      `  ├── CI integration         — run on every PR with exit 1 on failure\n` +
-      `  ├── SARIF/JUnit output     — native GitHub Security tab integration\n` +
-      `  ├── PDF reports            — shareable test run summaries\n` +
-      `  └── Full run history       — see if pass rates are improving over time\n\n` +
-      `  $19/mo, cancel anytime\n` +
-      `  → Upgrade: ${UPGRADE_URL}\n` +
-      `    Already have a key? stepproof activate <key>\n` +
-      `─────────────────────────────────────────────────────────────\n\n`
+      `\n  You've used ${FREE_MONTHLY_LIMIT}/${FREE_MONTHLY_LIMIT} free runs this month.\n` +
+      `  Upgrade to Team for unlimited runs: ${UPGRADE_URL}\n` +
+      `  Already have a key? stepproof activate <key>\n\n`
     );
     return false;
   }
@@ -106,42 +105,24 @@ function checkUsageLimit(): boolean {
 /** Increment usage after a successful free run and show a state-based CTA */
 function trackUsageAfterRun(): void {
   if (isProUser()) return;
+  const usage = readSharedUsage();
+  usage.total += 1;
+  usage.tools[TOOL_NAME] = (usage.tools[TOOL_NAME] ?? 0) + 1;
+  writeSharedUsage(usage);
 
-  const usage = readUsage();
-  usage.count += 1;
-  writeUsage(usage);
-
-  const used = usage.count;
+  const used = usage.total;
   const remaining = FREE_MONTHLY_LIMIT - used;
 
   let msg: string;
-  if (remaining === 1) {
-    // Nudge C — urgency (run 9 of 10)
-    msg =
-      `\n─────────────────────────────────────────────────────────────\n` +
-      `  ${used} of ${FREE_MONTHLY_LIMIT} free runs used — 1 left this month.\n\n` +
-      `  Don't hit the cap mid-sprint. Team tier removes the limit\n` +
-      `  and unlocks dashboard · PDF reports · Slack integration · history.\n` +
-      `  $19/mo → ${UPGRADE_URL}\n` +
-      `─────────────────────────────────────────────────────────────\n`;
+  if (remaining === 0) {
+    msg = `\n  ${used}/${FREE_MONTHLY_LIMIT} free Preflight runs used — cap reached.\n` +
+          `  Upgrade to Team for unlimited runs: ${UPGRADE_URL}\n\n`;
   } else if (remaining <= 5) {
-    // Nudge B — feature angle (runs 5–8)
-    msg =
-      `\n─────────────────────────────────────────────────────────────\n` +
-      `  ${used} of ${FREE_MONTHLY_LIMIT} free runs used this month.\n` +
-      `  Team tier unlocks: dashboard · PDF reports · Slack integration · full run history.\n` +
-      `  $19/mo · Upgrade: ${UPGRADE_URL}\n` +
-      `─────────────────────────────────────────────────────────────\n`;
+    msg = `\n  ${used}/${FREE_MONTHLY_LIMIT} free Preflight runs used — ${remaining} left this month.\n` +
+          `  Team tier removes the cap · $49/mo → ${UPGRADE_URL}\n\n`;
   } else {
-    // Nudge A — lightweight (runs 1–4)
-    msg =
-      `\n─────────────────────────────────────────────────────────────\n` +
-      `  Run ${used} of ${FREE_MONTHLY_LIMIT} free this month.\n` +
-      `  Team tier unlocks: dashboard · PDF reports · Slack integration · history.\n` +
-      `  stepproof activate <key>  ·  Upgrade → ${UPGRADE_URL}\n` +
-      `─────────────────────────────────────────────────────────────\n`;
+    msg = `\n  Run ${used} of ${FREE_MONTHLY_LIMIT} free Preflight runs this month.\n\n`;
   }
-
   process.stderr.write(msg);
 }
 
@@ -152,7 +133,7 @@ const program = new Command();
 program
   .name('stepproof')
   .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-  .version('0.2.12')
+  .version('0.2.13')
   .addHelpText('after', `
 Examples:
   stepproof init                                        scaffold a starter scenario
@@ -169,7 +150,7 @@ program
 
 program
   .command('activate <key>')
-  .description('Store a license key for unlimited runs')
+  .description('Store a license key for unlimited runs (applies to all Preflight Suite tools)')
   .action((key: string) => {
     const result = validate(key);
     if (!result.valid) {
@@ -177,9 +158,9 @@ program
       process.exit(1);
     }
     try {
-      fs.mkdirSync(CONFIG_DIR, { recursive: true });
-      fs.writeFileSync(CONFIG_FILE, JSON.stringify({ key }), 'utf8');
-      console.log(`\nLicense activated (${result.tier} — ${result.org}). Unlimited runs enabled.\n`);
+      fs.mkdirSync(SUITE_DIR, { recursive: true });
+      fs.writeFileSync(SUITE_LICENSE_FILE, JSON.stringify({ key }), 'utf8');
+      console.log(`\nLicense activated (${result.tier} — ${result.org}). Unlimited runs enabled across all Preflight Suite tools.\n`);
     } catch (e) {
       process.stderr.write(`\nFailed to save license: ${(e as Error).message}\n\n`);
       process.exit(1);

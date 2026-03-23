@@ -17,6 +17,10 @@ export interface TelemetryPayload {
     version: string;
     /** Optional: outcome label — 'pass' | 'fail' | 'error' */
     outcome?: string;
+    /** Process exit code */
+    exit_code?: number;
+    /** Command wall-clock duration in milliseconds */
+    duration_ms?: number;
 }
 /**
  * Send a telemetry ping. Returns a Promise that resolves within 3 seconds.
