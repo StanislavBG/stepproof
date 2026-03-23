@@ -12,7 +12,7 @@ import * as fs from 'node:fs';
 import { guard, validate } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
 import { sendTelemetry } from './telemetry.js';
-const CLI_VERSION = '0.2.14';
+const CLI_VERSION = '0.2.15';
 /* ── Usage-based monetization (Preflight Suite — shared) ────────────── */
 const TOOL_NAME = 'stepproof';
 const FREE_MONTHLY_LIMIT = 50;
@@ -82,8 +82,8 @@ function checkUsageLimit() {
         return true;
     const usage = readSharedUsage();
     if (usage.total >= FREE_MONTHLY_LIMIT) {
-        process.stderr.write(`\n  You've used ${FREE_MONTHLY_LIMIT}/${FREE_MONTHLY_LIMIT} free runs this month.\n` +
-            `  Upgrade to Team for unlimited runs: ${UPGRADE_URL}\n` +
+        process.stderr.write(`\n  Cap reached — CI blocked. Upgrade to keep tests running.\n` +
+            `  Team: unlimited runs · $49/mo → ${UPGRADE_URL}\n` +
             `  Already have a key? stepproof activate <key>\n\n`);
         return false;
     }
@@ -102,13 +102,16 @@ async function trackUsageAfterRun() {
     let msg;
     let outcome;
     if (remaining === 0) {
-        msg = `\n  ${used}/${FREE_MONTHLY_LIMIT} free Preflight runs used — cap reached.\n` +
-            `  Upgrade to Team for unlimited runs: ${UPGRADE_URL}\n\n`;
+        msg = `\n  ${used}/${FREE_MONTHLY_LIMIT} free runs used — next run will be blocked.\n` +
+            `  Upgrade to Team for unlimited: ${UPGRADE_URL}\n` +
+            `  Already have a key? stepproof activate <key>\n\n`;
         outcome = 'upgrade_shown_cap';
     }
     else if (remaining <= 5) {
-        msg = `\n  ${used}/${FREE_MONTHLY_LIMIT} free Preflight runs used — ${remaining} left this month.\n` +
-            `  Team tier removes the cap · $49/mo → ${UPGRADE_URL}\n\n`;
+        const runWord = remaining === 1 ? 'run' : 'runs';
+        msg = `\n  ${used}/${FREE_MONTHLY_LIMIT} free Preflight runs used — ${remaining} ${runWord} left.\n` +
+            `  Don't let CI break unexpectedly · Team: $49/mo → ${UPGRADE_URL}\n` +
+            `  Already have a key? stepproof activate <key>\n\n`;
         outcome = 'upgrade_shown_warning';
     }
     else {
