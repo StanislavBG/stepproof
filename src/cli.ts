@@ -13,7 +13,7 @@ import { guard, validate } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
 import { sendTelemetry } from './telemetry.js';
 
-const CLI_VERSION = '0.2.15';
+const CLI_VERSION = '0.2.17';
 
 /* ── Usage-based monetization (Preflight Suite — shared) ────────────── */
 
@@ -144,7 +144,7 @@ const program = new Command();
 program
   .name('stepproof')
   .description('Regression testing for multi-step AI workflows. Not observability — a CI gate.')
-  .version('0.2.14')
+  .version('0.2.17')
   .addHelpText('after', `
 Examples:
   stepproof init                                        scaffold a starter scenario
