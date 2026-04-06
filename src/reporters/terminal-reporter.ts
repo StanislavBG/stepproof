@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import { createRequire } from 'node:module';
-import type { ScenarioReport, StepSummary } from '../core/types.js';
+import type { ScenarioReport, StepSummary, StepResult } from '../core/types.js';
 import type { BaselineComparison, StepComparison } from '../baseline.js';
 import type { CacheStats } from '../core/scenario-runner.js';
 import type { ComparisonReport } from '../commands/compare.js';
@@ -72,7 +72,10 @@ export function printReport(report: ScenarioReport, reportPathOrOpts?: string | 
 
   // Aggregate step summaries (shown in both modes)
   for (const step of steps) {
-    printStepSummary(step, iterations, baselineMap.get(step.stepId));
+    // Find stream metrics from the first result that has them
+    const stepResults = report.results.filter(r => r.stepId === step.stepId);
+    const streamMetrics = stepResults.find(r => r.streamMetrics)?.streamMetrics;
+    printStepSummary(step, iterations, baselineMap.get(step.stepId), streamMetrics);
   }
 
   console.log(chalk.dim('─'.repeat(50)));
@@ -95,7 +98,12 @@ export function printReport(report: ScenarioReport, reportPathOrOpts?: string | 
   console.log('');
 }
 
-function printStepSummary(step: StepSummary, iterations: number, baseline?: StepComparison): void {
+function printStepSummary(
+  step: StepSummary,
+  iterations: number,
+  baseline?: StepComparison,
+  streamMetrics?: StepResult['streamMetrics'],
+): void {
   const { stepId, passes, totalRuns, passRate, minPassRate, belowThreshold, failures } = step;
 
   const statusIcon = belowThreshold ? chalk.red('✗') : chalk.green('✓');
@@ -122,9 +130,15 @@ function printStepSummary(step: StepSummary, iterations: number, baseline?: Step
   const avgCost = formatCost(step.avgCostUsd);
   const totalCost = formatCost(step.totalCostUsd);
   const hasCost = step.totalCostUsd > 0;
+
+  // Stream metrics suffix
+  const streamStr = streamMetrics
+    ? `, TTFT ${streamMetrics.ttftMs.toFixed(0)}ms, ${streamMetrics.tokensPerSecond.toFixed(0)} tok/s`
+    : '';
+
   const metricsSuffix = hasCost
-    ? chalk.dim(` — avg ${avgSec}s, ${avgCost}/call, total ${totalCost}`)
-    : chalk.dim(` — avg ${avgSec}s`);
+    ? chalk.dim(` — avg ${avgSec}s, ${avgCost}/call, total ${totalCost}${streamStr}`)
+    : chalk.dim(` — avg ${avgSec}s${streamStr}`);
 
   // Retry indicator
   const retryStr = step.retriedCount

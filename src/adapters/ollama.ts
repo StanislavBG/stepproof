@@ -1,4 +1,4 @@
-import type { AdapterResponse, ChatMessage, ProviderAdapter } from './base.js';
+import type { AdapterResponse, CallOptions, ChatMessage, ProviderAdapter } from './base.js';
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
@@ -11,19 +11,12 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
     } catch (err: unknown) {
       lastError = err;
       const status = (err as { status?: number }).status;
-      // Only retry on rate limit (429) or server error (5xx)
       if (status !== 429 && !(status && status >= 500)) throw err;
       const delay = BASE_DELAY_MS * Math.pow(2, attempt);
       await new Promise((res) => setTimeout(res, delay));
     }
   }
   throw lastError;
-}
-
-interface OllamaGenerateResponse {
-  response: string;
-  prompt_eval_count?: number;
-  eval_count?: number;
 }
 
 interface OllamaChatResponse {
@@ -41,12 +34,11 @@ export class OllamaAdapter implements ProviderAdapter {
     this.baseUrl = process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434';
   }
 
-  async call(prompt: string, system?: string): Promise<AdapterResponse> {
-    return this.chat([{ role: 'user', content: prompt }], system);
+  async call(prompt: string, system?: string, options?: CallOptions): Promise<AdapterResponse> {
+    return this.chat([{ role: 'user', content: prompt }], system, options);
   }
 
-  async chat(messages: ChatMessage[], system?: string): Promise<AdapterResponse> {
-    // Build Ollama chat API messages array
+  async chat(messages: ChatMessage[], system?: string, options?: CallOptions): Promise<AdapterResponse> {
     const apiMessages: Array<{ role: string; content: string }> = [];
     if (system) {
       apiMessages.push({ role: 'system', content: system });
@@ -54,6 +46,11 @@ export class OllamaAdapter implements ProviderAdapter {
     for (const msg of messages) {
       apiMessages.push({ role: msg.role, content: msg.content });
     }
+
+    const ollamaOptions: Record<string, unknown> = {};
+    if (options?.temperature !== undefined) ollamaOptions.temperature = options.temperature;
+    if (options?.topP !== undefined) ollamaOptions.top_p = options.topP;
+    if (options?.maxTokens !== undefined) ollamaOptions.num_predict = options.maxTokens;
 
     const startMs = Date.now();
     const response = await withRetry(() =>
@@ -64,6 +61,7 @@ export class OllamaAdapter implements ProviderAdapter {
           model: this.model,
           messages: apiMessages,
           stream: false,
+          ...(Object.keys(ollamaOptions).length > 0 && { options: ollamaOptions }),
         }),
       })
     );

@@ -1,6 +1,6 @@
 import * as path from 'node:path';
-import { getAdapter } from '../adapters/index.js';
-import type { AdapterResponse, ChatMessage } from '../adapters/base.js';
+import { getAdapter, getCustomAdapter } from '../adapters/index.js';
+import type { AdapterResponse, CallOptions, ChatMessage } from '../adapters/base.js';
 import { runAssertions } from '../assertions/engine.js';
 import { substituteVariables } from './scenario-parser.js';
 import { getCached, setCache } from '../cache.js';
@@ -48,6 +48,90 @@ export interface RunOptions {
 
 function delayMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Build CallOptions from step-level config fields */
+function buildCallOptions(step: Step): CallOptions | undefined {
+  if (step.temperature === undefined && step.top_p === undefined && step.max_tokens === undefined) {
+    return undefined;
+  }
+  return {
+    temperature: step.temperature,
+    topP: step.top_p,
+    maxTokens: step.max_tokens,
+  };
+}
+
+/** Wrap a promise with a timeout using Promise.race */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Step timed out after ${timeoutMs}ms`)), timeoutMs);
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
+// ── Streaming execution ─────────────────────────────────────────────
+
+/**
+ * Execute a step using streaming and collect TTFT/TPS/ITL metrics.
+ * Falls back to non-streaming if the adapter doesn't support it.
+ */
+async function executeStreaming(
+  step: Step,
+  resolvedPrompt: string,
+  resolvedSystem: string | undefined,
+  callOptions: CallOptions | undefined,
+  scenarioDir: string,
+): Promise<AdapterResponse> {
+  const adapter = step.provider === 'custom' && step.plugin
+    ? await getCustomAdapter(path.resolve(scenarioDir, step.plugin))
+    : getAdapter(step.provider, step.model);
+
+  if (!adapter.stream) {
+    // Fallback: adapter doesn't support streaming
+    return adapter.call(resolvedPrompt, resolvedSystem, callOptions);
+  }
+
+  const startMs = Date.now();
+  const tokens: string[] = [];
+  const timestamps: number[] = [];
+
+  const gen = adapter.stream(resolvedPrompt, resolvedSystem, callOptions);
+  for await (const chunk of gen) {
+    tokens.push(chunk.token);
+    timestamps.push(chunk.timestampMs);
+  }
+
+  const endMs = Date.now();
+  const text = tokens.join('');
+  const durationMs = endMs - startMs;
+
+  // Compute stream metrics — O(n) single pass over timestamps
+  let ttftMs = 0;
+  let tokensPerSecond = 0;
+  let interTokenLatencyMs = 0;
+
+  if (timestamps.length > 0) {
+    ttftMs = timestamps[0] - startMs;
+    tokensPerSecond = durationMs > 0 ? (tokens.length / durationMs) * 1000 : 0;
+
+    if (timestamps.length > 1) {
+      let totalITL = 0;
+      for (let i = 1; i < timestamps.length; i++) {
+        totalITL += timestamps[i] - timestamps[i - 1];
+      }
+      interTokenLatencyMs = totalITL / (timestamps.length - 1);
+    }
+  }
+
+  return {
+    text,
+    durationMs,
+    streamMetrics: { ttftMs, tokensPerSecond, interTokenLatencyMs },
+  };
 }
 
 // ── Dependency graph helpers ──────────────────────────────────────────
@@ -105,9 +189,7 @@ function buildDependencyMap(steps: Step[]): Map<string, Set<string>> {
 
 /** Check whether any parallelism exists in the dependency graph. */
 function hasAnyParallelism(steps: Step[], depMap: Map<string, Set<string>>): boolean {
-  // If any step has explicit deps/if/conversation, use the parallel executor
   if (steps.some(s => s.if || s.conversation)) return true;
-  // If >1 step has zero deps they can run concurrently
   let zeroDeps = 0;
   for (const deps of depMap.values()) {
     if (deps.size === 0) zeroDeps++;
@@ -118,11 +200,6 @@ function hasAnyParallelism(steps: Step[], depMap: Map<string, Set<string>>): boo
 
 // ── Conditional step evaluation ──────────────────────────────────────
 
-/**
- * Evaluate an `if` condition string against step outputs.
- * Format: '<subject> contains|not_contains|matches "<value>"'
- * Subject is typically "{{step_id.output}}" which gets substituted first.
- */
 function evaluateCondition(
   condition: string,
   variables: Record<string, string>,
@@ -141,7 +218,6 @@ function evaluateCondition(
   const operator = opMatch[2];
   const value = opMatch[3];
 
-  // Strip surrounding quotes from subject if present
   if ((subject.startsWith('"') && subject.endsWith('"')) ||
       (subject.startsWith("'") && subject.endsWith("'"))) {
     subject = subject.slice(1, -1);
@@ -157,18 +233,14 @@ function evaluateCondition(
 
 // ── Multi-turn conversation execution ────────────────────────────────
 
-/**
- * Execute a multi-turn conversation step.
- * Builds messages from conversation turns, substituting templates.
- * The last assistant turn without content is the LLM generation point.
- */
 async function executeConversation(
   step: Step,
   variables: Record<string, string>,
   stepOutputs: Record<string, string>,
   resolvedSystem: string | undefined,
   useCache: boolean,
-  cacheStats: CacheStats
+  cacheStats: CacheStats,
+  scenarioDir: string
 ): Promise<AdapterResponse> {
   const turns = step.conversation!;
   const messages: ChatMessage[] = [];
@@ -178,12 +250,10 @@ async function executeConversation(
       const resolvedContent = substituteVariables(turn.content, variables, stepOutputs);
       messages.push({ role: turn.role, content: resolvedContent });
     } else if (turn.role === 'assistant') {
-      // LLM generation point — stop building messages here
       break;
     }
   }
 
-  // Cache key: concatenation of all messages + system
   const cacheKeyStr = messages.map(m => `${m.role}:${m.content}`).join('|');
   const cached: AdapterResponse | null = useCache
     ? getCached(step.provider, step.model, cacheKeyStr, resolvedSystem)
@@ -194,8 +264,11 @@ async function executeConversation(
     return cached;
   }
 
-  const adapter = getAdapter(step.provider, step.model);
-  const response = await adapter.chat(messages, resolvedSystem);
+  const adapter = step.provider === 'custom' && step.plugin
+    ? await getCustomAdapter(path.resolve(scenarioDir, step.plugin))
+    : getAdapter(step.provider, step.model);
+  const callOptions = buildCallOptions(step);
+  const response = await adapter.chat(messages, resolvedSystem, callOptions);
   cacheStats.misses++;
 
   if (useCache) {
@@ -207,10 +280,6 @@ async function executeConversation(
 
 // ── Single step execution (with retry) ───────────────────────────────
 
-/**
- * Run a single step for one iteration: conditional check, adapter call (prompt or conversation),
- * assertions, and retries.
- */
 async function runStepIteration(
   step: Step,
   iteration: number,
@@ -242,6 +311,7 @@ async function runStepIteration(
   const maxRetries = step.retry ?? 0;
   const retryDelayVal = step.retry_delay ?? 1000;
   let retriesUsed = 0;
+  const callOptions = buildCallOptions(step);
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const resolvedSystem = step.system
@@ -254,13 +324,19 @@ async function runStepIteration(
     let inputTokens: number | undefined;
     let outputTokens: number | undefined;
     let costUsd: number | undefined;
+    let streamMetrics: StepResult['streamMetrics'];
 
     try {
       let response: AdapterResponse;
+      let callPromise: Promise<AdapterResponse>;
 
       if (step.conversation) {
-        // Multi-turn conversation mode
-        response = await executeConversation(step, variables, stepOutputs, resolvedSystem, useCache, cacheStats);
+        callPromise = executeConversation(step, variables, stepOutputs, resolvedSystem, useCache, cacheStats, scenarioDir);
+      } else if (step.stream) {
+        // Streaming mode — bypass cache, collect stream metrics
+        const resolvedPrompt = substituteVariables(step.prompt ?? '', variables, stepOutputs);
+        callPromise = executeStreaming(step, resolvedPrompt, resolvedSystem, callOptions, scenarioDir);
+        cacheStats.misses++;
       } else {
         // Standard single-prompt mode
         const resolvedPrompt = substituteVariables(step.prompt ?? '', variables, stepOutputs);
@@ -271,19 +347,31 @@ async function runStepIteration(
 
         if (cached !== null) {
           cacheStats.hits++;
-          response = cached;
+          callPromise = Promise.resolve(cached);
         } else {
-          const adapter = getAdapter(step.provider, step.model);
-          response = await adapter.call(resolvedPrompt, resolvedSystem);
-          cacheStats.misses++;
-          if (useCache && attempt === 0) {
-            setCache(step.provider, step.model, resolvedPrompt, resolvedSystem, response);
-          }
+          const adapter = step.provider === 'custom' && step.plugin
+            ? await getCustomAdapter(path.resolve(scenarioDir, step.plugin))
+            : getAdapter(step.provider, step.model);
+          callPromise = adapter.call(resolvedPrompt, resolvedSystem, callOptions).then(resp => {
+            cacheStats.misses++;
+            if (useCache && attempt === 0) {
+              setCache(step.provider, step.model, resolvedPrompt, resolvedSystem, resp);
+            }
+            return resp;
+          });
         }
+      }
+
+      // Apply timeout if configured
+      if (step.timeout) {
+        response = await withTimeout(callPromise, step.timeout);
+      } else {
+        response = await callPromise;
       }
 
       output = response.text;
       durationMs = response.durationMs;
+      streamMetrics = response.streamMetrics;
       if (response.usage) {
         inputTokens = response.usage.inputTokens;
         outputTokens = response.usage.outputTokens;
@@ -304,7 +392,7 @@ async function runStepIteration(
         output,
         step.assertions,
         scenarioDir,
-        { durationMs, costUsd }
+        { durationMs, costUsd, streamMetrics, scenarioName: '', stepId: step.id }
       );
       assertionResults = results;
       assertionsPassed = allPassed;
@@ -326,6 +414,7 @@ async function runStepIteration(
         inputTokens,
         outputTokens,
         costUsd,
+        streamMetrics,
       };
     }
 
@@ -339,11 +428,6 @@ async function runStepIteration(
 
 // ── Parallel step execution (topological) ────────────────────────────
 
-/**
- * Execute steps respecting dependency graph.
- * Steps with all dependencies satisfied run concurrently via Promise.all().
- * O(S^2) worst case (fully serial chain) — S is typically < 20.
- */
 async function executeStepsParallel(
   steps: Step[],
   depMap: Map<string, Set<string>>,
@@ -362,7 +446,6 @@ async function executeStepsParallel(
   const stepById = new Map(steps.map(s => [s.id, s]));
 
   while (remaining.size > 0) {
-    // Find steps whose dependencies are all satisfied
     const ready: Step[] = [];
     for (const id of remaining) {
       const deps = depMap.get(id)!;
@@ -431,7 +514,6 @@ export async function runScenario(
           options.onStepComplete, rowIndex
         );
       } else {
-        // Fast sequential path for simple scenarios
         const stepOutputs: Record<string, string> = {};
         iterResults = [];
         for (const step of scenario.steps) {
@@ -457,7 +539,7 @@ export async function runScenario(
     const nonSkipped = stepResults.filter(r => !r.skipped);
     const passes = nonSkipped.filter((r) => r.passed).length;
     const failures = nonSkipped.length - passes;
-    const passRate = nonSkipped.length > 0 ? passes / nonSkipped.length : 1; // all-skipped = pass
+    const passRate = nonSkipped.length > 0 ? passes / nonSkipped.length : 1;
     const minPassRate = step.min_pass_rate ?? 0.8;
     const retriedCount = stepResults.filter((r) => (r.retriesUsed ?? 0) > 0).length;
 

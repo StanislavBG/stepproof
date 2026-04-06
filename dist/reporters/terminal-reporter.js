@@ -48,7 +48,10 @@ export function printReport(report, reportPathOrOpts) {
     }
     // Aggregate step summaries (shown in both modes)
     for (const step of steps) {
-        printStepSummary(step, iterations, baselineMap.get(step.stepId));
+        // Find stream metrics from the first result that has them
+        const stepResults = report.results.filter(r => r.stepId === step.stepId);
+        const streamMetrics = stepResults.find(r => r.streamMetrics)?.streamMetrics;
+        printStepSummary(step, iterations, baselineMap.get(step.stepId), streamMetrics);
     }
     console.log(chalk.dim('─'.repeat(50)));
     printSummaryLine(allPassed, steps);
@@ -64,7 +67,7 @@ export function printReport(report, reportPathOrOpts) {
     }
     console.log('');
 }
-function printStepSummary(step, iterations, baseline) {
+function printStepSummary(step, iterations, baseline, streamMetrics) {
     const { stepId, passes, totalRuns, passRate, minPassRate, belowThreshold, failures } = step;
     const statusIcon = belowThreshold ? chalk.red('✗') : chalk.green('✓');
     const rateColor = belowThreshold ? chalk.red : chalk.green;
@@ -90,9 +93,13 @@ function printStepSummary(step, iterations, baseline) {
     const avgCost = formatCost(step.avgCostUsd);
     const totalCost = formatCost(step.totalCostUsd);
     const hasCost = step.totalCostUsd > 0;
+    // Stream metrics suffix
+    const streamStr = streamMetrics
+        ? `, TTFT ${streamMetrics.ttftMs.toFixed(0)}ms, ${streamMetrics.tokensPerSecond.toFixed(0)} tok/s`
+        : '';
     const metricsSuffix = hasCost
-        ? chalk.dim(` — avg ${avgSec}s, ${avgCost}/call, total ${totalCost}`)
-        : chalk.dim(` — avg ${avgSec}s`);
+        ? chalk.dim(` — avg ${avgSec}s, ${avgCost}/call, total ${totalCost}${streamStr}`)
+        : chalk.dim(` — avg ${avgSec}s${streamStr}`);
     // Retry indicator
     const retryStr = step.retriedCount
         ? chalk.yellow(` — ${step.retriedCount} retried`)

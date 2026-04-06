@@ -10,7 +10,6 @@ async function withRetry(fn) {
         catch (err) {
             lastError = err;
             const status = err.status;
-            // Only retry on rate limit (429) or server error (5xx)
             if (status !== 429 && !(status && status >= 500))
                 throw err;
             const delay = BASE_DELAY_MS * Math.pow(2, attempt);
@@ -29,16 +28,13 @@ export class AnthropicAdapter {
         }
         this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     }
-    async call(prompt, system) {
-        return this.chat([{ role: 'user', content: prompt }], system);
+    async call(prompt, system, options) {
+        return this.chat([{ role: 'user', content: prompt }], system, options);
     }
-    async chat(messages, system) {
-        // Anthropic API requires alternating user/assistant messages.
-        // System messages are passed via the top-level system param.
+    async chat(messages, system, options) {
         const apiMessages = [];
         for (const msg of messages) {
             if (msg.role === 'system') {
-                // Fold into system param — Anthropic doesn't support system in messages array
                 system = system ? `${system}\n\n${msg.content}` : msg.content;
             }
             else {
@@ -48,8 +44,10 @@ export class AnthropicAdapter {
         const startMs = Date.now();
         const response = await withRetry(() => this.client.messages.create({
             model: this.model,
-            max_tokens: 1024,
+            max_tokens: options?.maxTokens ?? 1024,
             ...(system && { system }),
+            ...(options?.temperature !== undefined && { temperature: options.temperature }),
+            ...(options?.topP !== undefined && { top_p: options.topP }),
             messages: apiMessages,
         }));
         const durationMs = Date.now() - startMs;
@@ -63,6 +61,24 @@ export class AnthropicAdapter {
             },
             durationMs,
         };
+    }
+    async *stream(prompt, system, options) {
+        const apiMessages = [
+            { role: 'user', content: prompt },
+        ];
+        const stream = this.client.messages.stream({
+            model: this.model,
+            max_tokens: options?.maxTokens ?? 1024,
+            ...(system && { system }),
+            ...(options?.temperature !== undefined && { temperature: options.temperature }),
+            ...(options?.topP !== undefined && { top_p: options.topP }),
+            messages: apiMessages,
+        });
+        for await (const event of stream) {
+            if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+                yield { token: event.delta.text, timestampMs: Date.now() };
+            }
+        }
     }
 }
 //# sourceMappingURL=anthropic.js.map

@@ -23,6 +23,7 @@ import { clearCache } from './cache.js';
 import { runComparison, parseProviderSpecs } from './commands/compare.js';
 import { loadDataset } from './dataset.js';
 import { startWatch } from './commands/watch.js';
+import { runGenerate } from './commands/generate.js';
 
 const CLI_VERSION = '0.2.21';
 
@@ -230,6 +231,7 @@ program
   .option('--no-baseline', 'Skip baseline comparison and saving')
   .option('--no-cache', 'Disable LLM response caching')
   .option('--dataset <path>', 'CSV file with input rows — run scenario once per row')
+  .option('--env <name>', 'Environment override (dev, staging, prod, etc.)')
   .action(async (scenarioPath: string | undefined, opts: {
     iterations?: number;
     output: string;
@@ -240,6 +242,7 @@ program
     baseline: boolean;
     cache: boolean;
     dataset?: string;
+    env?: string;
   }) => {
     // --report is deprecated; normalize to --format
     if (opts.report && !opts.format) {
@@ -312,7 +315,7 @@ program
 
     let scenario;
     try {
-      scenario = parseScenario(resolvedPath);
+      scenario = parseScenario(resolvedPath, opts.env);
     } catch (e) {
       console.error(`\nError parsing scenario: ${(e as Error).message}`);
       process.exit(2);
@@ -457,6 +460,51 @@ program
     process.exit(0);
   });
 
+/* ── Generate command ─────────────────────────────────────────────── */
+
+program
+  .command('generate <scenario>')
+  .description('Auto-generate synthetic edge-case test inputs for a scenario')
+  .option('--count <number>', 'Number of test inputs to generate', parseInt, 20)
+  .option('--output <path>', 'Output CSV file path (default: {scenario}-synthetic.csv)')
+  .option('--append', 'Append to existing CSV instead of overwriting', false)
+  .action(async (scenarioPath: string, opts: {
+    count: number;
+    output?: string;
+    append: boolean;
+  }) => {
+    const isPro = isProUser();
+    const startMs = Date.now();
+
+    if (!checkUsageLimit()) {
+      await sendTelemetry({ command: 'generate', success: false, version: CLI_VERSION, outcome: 'rate_limited', exit_code: 1, duration_ms: Date.now() - startMs, is_pro: isPro });
+      process.exit(1);
+    }
+
+    if (opts.count < 1 || !Number.isInteger(opts.count)) {
+      console.error('\nError: --count must be a positive integer\n');
+      process.exit(2);
+    }
+
+    console.log(`\nGenerating ${opts.count} synthetic test inputs for: ${scenarioPath}`);
+
+    try {
+      const outputPath = await runGenerate(scenarioPath, {
+        count: opts.count,
+        output: opts.output,
+        append: opts.append,
+      });
+      console.log(chalk.green(`\nGenerated ${opts.count} test inputs → ${outputPath}`));
+      console.log(chalk.dim(`Run with: stepproof run ${scenarioPath} --dataset ${outputPath}\n`));
+      await trackUsageAfterRun();
+      await sendTelemetry({ command: 'generate', success: true, version: CLI_VERSION, outcome: 'generated', exit_code: 0, duration_ms: Date.now() - startMs, is_pro: isPro });
+    } catch (e) {
+      console.error(`\nError: ${(e as Error).message}\n`);
+      await sendTelemetry({ command: 'generate', success: false, version: CLI_VERSION, outcome: 'error', exit_code: 2, duration_ms: Date.now() - startMs, is_pro: isPro });
+      process.exit(2);
+    }
+  });
+
 /* ── Watch command ────────────────────────────────────────────────── */
 
 program
@@ -544,6 +592,67 @@ cacheCmd
     const count = clearCache();
     console.log(`\nCleared ${count} cached response${count === 1 ? '' : 's'}\n`);
     await sendTelemetry({ command: 'cache_clear', success: true, version: CLI_VERSION, outcome: 'cleared' });
+  });
+
+/* ── Snapshot subcommands ─────────────────────────────────────────── */
+
+const snapshotCmd = program
+  .command('snapshot')
+  .description('Manage snapshot golden files for regression testing');
+
+snapshotCmd
+  .command('update [scenario]')
+  .description('Force-update all snapshot golden files by re-running the scenario')
+  .option('-n, --iterations <number>', 'Number of iterations to run', parseInt)
+  .option('--env <name>', 'Environment override')
+  .action(async (scenarioPath: string | undefined, opts: { iterations?: number; env?: string }) => {
+    if (!scenarioPath) {
+      console.error('\nError: Scenario path required. Usage: stepproof snapshot update <scenario>\n');
+      process.exit(2);
+    }
+
+    const resolvedPath = path.resolve(process.cwd(), scenarioPath);
+    if (!fs.existsSync(resolvedPath)) {
+      console.error(`\nError: Scenario not found: ${resolvedPath}\n`);
+      process.exit(2);
+    }
+
+    let scenario;
+    try {
+      scenario = parseScenario(resolvedPath, opts.env);
+    } catch (e) {
+      console.error(`\nError parsing scenario: ${(e as Error).message}`);
+      process.exit(2);
+    }
+
+    const scenarioDir = path.dirname(resolvedPath);
+
+    console.log(`\nUpdating snapshots for: ${scenario.name}`);
+    const report = await runScenario(scenario, resolvedPath, { iterations: opts.iterations ?? 1 });
+
+    // Import updateSnapshot from engine
+    const { updateSnapshot } = await import('./assertions/engine.js');
+    let updatedCount = 0;
+    for (const step of scenario.steps) {
+      const hasSnapshotAssertion = step.assertions.some(a => a.type === 'snapshot');
+      if (!hasSnapshotAssertion) continue;
+
+      // Use the first result for this step
+      const result = report.results.find(r => r.stepId === step.id);
+      if (result && result.output) {
+        const savedPath = updateSnapshot(scenarioDir, step.id, result.output);
+        console.log(`  Updated: ${step.id} → ${savedPath}`);
+        updatedCount++;
+      }
+    }
+
+    if (updatedCount === 0) {
+      console.log('  No steps with snapshot assertions found.');
+    } else {
+      console.log(`\n${updatedCount} snapshot${updatedCount === 1 ? '' : 's'} updated.\n`);
+    }
+
+    await sendTelemetry({ command: 'snapshot_update', success: true, version: CLI_VERSION, outcome: 'updated' });
   });
 
 /* ── Compare command ──────────────────────────────────────────────── */

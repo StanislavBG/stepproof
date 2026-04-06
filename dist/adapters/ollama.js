@@ -9,7 +9,6 @@ async function withRetry(fn) {
         catch (err) {
             lastError = err;
             const status = err.status;
-            // Only retry on rate limit (429) or server error (5xx)
             if (status !== 429 && !(status && status >= 500))
                 throw err;
             const delay = BASE_DELAY_MS * Math.pow(2, attempt);
@@ -25,11 +24,10 @@ export class OllamaAdapter {
         this.model = model;
         this.baseUrl = process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434';
     }
-    async call(prompt, system) {
-        return this.chat([{ role: 'user', content: prompt }], system);
+    async call(prompt, system, options) {
+        return this.chat([{ role: 'user', content: prompt }], system, options);
     }
-    async chat(messages, system) {
-        // Build Ollama chat API messages array
+    async chat(messages, system, options) {
         const apiMessages = [];
         if (system) {
             apiMessages.push({ role: 'system', content: system });
@@ -37,6 +35,13 @@ export class OllamaAdapter {
         for (const msg of messages) {
             apiMessages.push({ role: msg.role, content: msg.content });
         }
+        const ollamaOptions = {};
+        if (options?.temperature !== undefined)
+            ollamaOptions.temperature = options.temperature;
+        if (options?.topP !== undefined)
+            ollamaOptions.top_p = options.topP;
+        if (options?.maxTokens !== undefined)
+            ollamaOptions.num_predict = options.maxTokens;
         const startMs = Date.now();
         const response = await withRetry(() => fetch(`${this.baseUrl}/api/chat`, {
             method: 'POST',
@@ -45,6 +50,7 @@ export class OllamaAdapter {
                 model: this.model,
                 messages: apiMessages,
                 stream: false,
+                ...(Object.keys(ollamaOptions).length > 0 && { options: ollamaOptions }),
             }),
         }));
         const durationMs = Date.now() - startMs;

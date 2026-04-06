@@ -1,4 +1,4 @@
-export type Provider = 'openai' | 'anthropic' | 'gemini' | 'ollama';
+export type Provider = 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'azure-openai' | 'bedrock' | 'custom';
 
 export type AssertionType =
   | 'contains'
@@ -14,7 +14,19 @@ export type AssertionType =
   | 'length'
   | 'word_count'
   | 'cost_under'
-  | 'latency_under';
+  | 'latency_under'
+  | 'snapshot'
+  | 'ttft_under'
+  | 'tokens_per_second_above'
+  | 'hallucination'
+  | 'faithfulness'
+  | 'pii_detection'
+  | 'prompt_injection'
+  | 'tool_call'
+  | 'no_refusal'
+  | 'language'
+  | 'coherence'
+  | 'custom';
 
 export interface ConversationTurn {
   role: 'user' | 'assistant' | 'system';
@@ -43,12 +55,26 @@ export interface Assertion {
   min?: number;
   /** For length, word_count: maximum value */
   max?: number;
+  /** For hallucination, faithfulness: source context to evaluate against */
+  context?: string;
+  /** For tool_call: expected tool/function name */
+  expected_tool?: string;
+  /** For tool_call: expected arguments (subset match) */
+  expected_args?: Record<string, unknown>;
+  /** For custom assertions: path to JS plugin file (relative to scenario dir) */
+  plugin?: string;
+  /** For custom assertions: arbitrary config object passed to the plugin function */
+  config?: Record<string, unknown>;
+  /** For snapshot: similarity threshold (default 0.8) */
+  similarity?: number;
 }
 
 export interface Step {
   id: string;
   provider: Provider;
   model: string;
+  /** For custom provider: path to JS plugin file (relative to scenario dir) */
+  plugin?: string;
   /** Prompt template. Use {{variable}} for variables, {{step_id.output}} for prior step outputs. Required unless conversation is set. */
   prompt?: string;
   /** Optional system prompt */
@@ -65,7 +91,23 @@ export interface Step {
   retry?: number;
   /** Delay in ms between retries. Default: 1000 */
   retry_delay?: number;
+  /** LLM temperature (0-2) */
+  temperature?: number;
+  /** Top-p / nucleus sampling (0-1) */
+  top_p?: number;
+  /** Max tokens to generate */
+  max_tokens?: number;
+  /** Timeout in ms for this step's LLM call */
+  timeout?: number;
+  /** Use streaming and collect TTFT/TPS metrics */
+  stream?: boolean;
   assertions: Assertion[];
+}
+
+export interface EnvironmentOverride {
+  iterations?: number;
+  variables?: Record<string, string>;
+  steps?: Record<string, Partial<Step>>;
 }
 
 export interface Scenario {
@@ -74,6 +116,8 @@ export interface Scenario {
   iterations?: number;
   /** Global variables for template substitution */
   variables?: Record<string, string>;
+  /** Environment-specific overrides (dev, staging, prod, etc.) */
+  environments?: Record<string, EnvironmentOverride>;
   steps: Step[];
 }
 
@@ -99,6 +143,11 @@ export interface StepResult {
   inputTokens?: number;
   outputTokens?: number;
   costUsd?: number;
+  streamMetrics?: {
+    ttftMs: number;
+    tokensPerSecond: number;
+    interTokenLatencyMs: number;
+  };
 }
 
 export interface StepSummary {

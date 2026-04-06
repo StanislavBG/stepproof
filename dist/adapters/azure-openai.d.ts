@@ -1,8 +1,8 @@
 import type { AdapterResponse, CallOptions, ChatMessage, ProviderAdapter } from './base.js';
-export declare class OpenAIAdapter implements ProviderAdapter {
+export declare class AzureOpenAIAdapter implements ProviderAdapter {
     private client;
-    private model;
-    constructor(model: string);
+    private deployment;
+    constructor(deployment: string);
     call(prompt: string, system?: string, options?: CallOptions): Promise<AdapterResponse>;
     chat(messages: ChatMessage[], system?: string, options?: CallOptions): Promise<AdapterResponse>;
     stream(prompt: string, system?: string, options?: CallOptions): AsyncGenerator<{
@@ -10,4 +10,4 @@ export declare class OpenAIAdapter implements ProviderAdapter {
         timestampMs: number;
     }>;
 }
-//# sourceMappingURL=openai.d.ts.map
+//# sourceMappingURL=azure-openai.d.ts.map

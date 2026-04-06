@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import OpenAI, { AzureOpenAI } from 'openai';
 import type { AdapterResponse, CallOptions, ChatMessage, ProviderAdapter } from './base.js';
 
 const MAX_RETRIES = 3;
@@ -20,16 +20,30 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   throw lastError;
 }
 
-export class OpenAIAdapter implements ProviderAdapter {
-  private client: OpenAI;
-  private model: string;
+export class AzureOpenAIAdapter implements ProviderAdapter {
+  private client: AzureOpenAI;
+  private deployment: string;
 
-  constructor(model: string) {
-    this.model = model;
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY environment variable is required for OpenAI provider');
+  constructor(deployment: string) {
+    this.deployment = deployment;
+
+    const apiKey = process.env.AZURE_OPENAI_API_KEY;
+    const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    if (!apiKey) {
+      throw new Error('AZURE_OPENAI_API_KEY environment variable is required for azure-openai provider');
     }
-    this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    if (!endpoint) {
+      throw new Error('AZURE_OPENAI_ENDPOINT environment variable is required for azure-openai provider');
+    }
+
+    const apiVersion = process.env.AZURE_OPENAI_API_VERSION ?? '2024-10-21';
+
+    this.client = new AzureOpenAI({
+      apiKey,
+      endpoint,
+      apiVersion,
+      deployment,
+    });
   }
 
   async call(prompt: string, system?: string, options?: CallOptions): Promise<AdapterResponse> {
@@ -49,7 +63,7 @@ export class OpenAIAdapter implements ProviderAdapter {
     const startMs = Date.now();
     const response = await withRetry(() =>
       this.client.chat.completions.create({
-        model: this.model,
+        model: this.deployment,
         messages: apiMessages,
         ...(options?.temperature !== undefined && { temperature: options.temperature }),
         ...(options?.topP !== undefined && { top_p: options.topP }),
@@ -74,7 +88,7 @@ export class OpenAIAdapter implements ProviderAdapter {
     apiMessages.push({ role: 'user', content: prompt });
 
     const stream = await this.client.chat.completions.create({
-      model: this.model,
+      model: this.deployment,
       messages: apiMessages,
       stream: true,
       ...(options?.temperature !== undefined && { temperature: options.temperature }),

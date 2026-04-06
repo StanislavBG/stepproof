@@ -1,3 +1,9 @@
+export interface CallOptions {
+  temperature?: number;
+  topP?: number;
+  maxTokens?: number;
+}
+
 export interface AdapterResponse {
   text: string;
   usage?: {
@@ -5,6 +11,11 @@ export interface AdapterResponse {
     outputTokens: number;
   };
   durationMs: number;
+  streamMetrics?: {
+    ttftMs: number;
+    tokensPerSecond: number;
+    interTokenLatencyMs: number;
+  };
 }
 
 export interface ChatMessage {
@@ -13,6 +24,7 @@ export interface ChatMessage {
 }
 
 export interface ProviderAdapter {
-  call(prompt: string, system?: string): Promise<AdapterResponse>;
-  chat(messages: ChatMessage[], system?: string): Promise<AdapterResponse>;
+  call(prompt: string, system?: string, options?: CallOptions): Promise<AdapterResponse>;
+  chat(messages: ChatMessage[], system?: string, options?: CallOptions): Promise<AdapterResponse>;
+  stream?(prompt: string, system?: string, options?: CallOptions): AsyncGenerator<{ token: string; timestampMs: number }>;
 }

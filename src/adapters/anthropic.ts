@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { AdapterResponse, ChatMessage, ProviderAdapter } from './base.js';
+import type { AdapterResponse, CallOptions, ChatMessage, ProviderAdapter } from './base.js';
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
@@ -12,7 +12,6 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
     } catch (err: unknown) {
       lastError = err;
       const status = (err as { status?: number }).status;
-      // Only retry on rate limit (429) or server error (5xx)
       if (status !== 429 && !(status && status >= 500)) throw err;
       const delay = BASE_DELAY_MS * Math.pow(2, attempt);
       await new Promise((res) => setTimeout(res, delay));
@@ -33,17 +32,14 @@ export class AnthropicAdapter implements ProviderAdapter {
     this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   }
 
-  async call(prompt: string, system?: string): Promise<AdapterResponse> {
-    return this.chat([{ role: 'user', content: prompt }], system);
+  async call(prompt: string, system?: string, options?: CallOptions): Promise<AdapterResponse> {
+    return this.chat([{ role: 'user', content: prompt }], system, options);
   }
 
-  async chat(messages: ChatMessage[], system?: string): Promise<AdapterResponse> {
-    // Anthropic API requires alternating user/assistant messages.
-    // System messages are passed via the top-level system param.
+  async chat(messages: ChatMessage[], system?: string, options?: CallOptions): Promise<AdapterResponse> {
     const apiMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
     for (const msg of messages) {
       if (msg.role === 'system') {
-        // Fold into system param — Anthropic doesn't support system in messages array
         system = system ? `${system}\n\n${msg.content}` : msg.content;
       } else {
         apiMessages.push({ role: msg.role, content: msg.content });
@@ -54,8 +50,10 @@ export class AnthropicAdapter implements ProviderAdapter {
     const response = await withRetry(() =>
       this.client.messages.create({
         model: this.model,
-        max_tokens: 1024,
+        max_tokens: options?.maxTokens ?? 1024,
         ...(system && { system }),
+        ...(options?.temperature !== undefined && { temperature: options.temperature }),
+        ...(options?.topP !== undefined && { top_p: options.topP }),
         messages: apiMessages,
       })
     );
@@ -72,5 +70,26 @@ export class AnthropicAdapter implements ProviderAdapter {
       },
       durationMs,
     };
+  }
+
+  async *stream(prompt: string, system?: string, options?: CallOptions): AsyncGenerator<{ token: string; timestampMs: number }> {
+    const apiMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [
+      { role: 'user', content: prompt },
+    ];
+
+    const stream = this.client.messages.stream({
+      model: this.model,
+      max_tokens: options?.maxTokens ?? 1024,
+      ...(system && { system }),
+      ...(options?.temperature !== undefined && { temperature: options.temperature }),
+      ...(options?.topP !== undefined && { top_p: options.topP }),
+      messages: apiMessages,
+    });
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        yield { token: event.delta.text, timestampMs: Date.now() };
+      }
+    }
   }
 }

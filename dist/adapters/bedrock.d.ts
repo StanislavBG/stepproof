@@ -1,9 +1,11 @@
 import type { AdapterResponse, CallOptions, ChatMessage, ProviderAdapter } from './base.js';
-export declare class GeminiAdapter implements ProviderAdapter {
-    private client;
+export declare class BedrockAdapter implements ProviderAdapter {
     private model;
+    private region;
+    private accessKeyId;
+    private secretAccessKey;
     constructor(model: string);
     call(prompt: string, system?: string, options?: CallOptions): Promise<AdapterResponse>;
     chat(messages: ChatMessage[], system?: string, options?: CallOptions): Promise<AdapterResponse>;
 }
-//# sourceMappingURL=gemini.d.ts.map
+//# sourceMappingURL=bedrock.d.ts.map

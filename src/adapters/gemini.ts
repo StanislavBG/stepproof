@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import type { AdapterResponse, ChatMessage, ProviderAdapter } from './base.js';
+import type { AdapterResponse, CallOptions, ChatMessage, ProviderAdapter } from './base.js';
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
@@ -12,7 +12,6 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
     } catch (err: unknown) {
       lastError = err;
       const status = (err as { status?: number }).status;
-      // Only retry on rate limit (429) or server error (5xx)
       if (status !== 429 && !(status && status >= 500)) throw err;
       const delay = BASE_DELAY_MS * Math.pow(2, attempt);
       await new Promise((res) => setTimeout(res, delay));
@@ -36,12 +35,11 @@ export class GeminiAdapter implements ProviderAdapter {
     this.client = new GoogleGenerativeAI(apiKey);
   }
 
-  async call(prompt: string, system?: string): Promise<AdapterResponse> {
-    return this.chat([{ role: 'user', content: prompt }], system);
+  async call(prompt: string, system?: string, options?: CallOptions): Promise<AdapterResponse> {
+    return this.chat([{ role: 'user', content: prompt }], system, options);
   }
 
-  async chat(messages: ChatMessage[], system?: string): Promise<AdapterResponse> {
-    // Fold any system-role messages into the system instruction
+  async chat(messages: ChatMessage[], system?: string, options?: CallOptions): Promise<AdapterResponse> {
     let effectiveSystem = system;
     for (const msg of messages) {
       if (msg.role === 'system') {
@@ -49,15 +47,19 @@ export class GeminiAdapter implements ProviderAdapter {
       }
     }
 
+    const generationConfig: Record<string, unknown> = {};
+    if (options?.temperature !== undefined) generationConfig.temperature = options.temperature;
+    if (options?.topP !== undefined) generationConfig.topP = options.topP;
+    if (options?.maxTokens !== undefined) generationConfig.maxOutputTokens = options.maxTokens;
+
     const generativeModel = this.client.getGenerativeModel({
       model: this.model,
       ...(effectiveSystem && { systemInstruction: effectiveSystem }),
+      ...(Object.keys(generationConfig).length > 0 && { generationConfig }),
     });
 
-    // Gemini uses "user" and "model" roles in history, final message sent via sendMessage
     const nonSystemMessages = messages.filter(m => m.role !== 'system');
 
-    // If only one user message, use simple generateContent
     if (nonSystemMessages.length === 1 && nonSystemMessages[0].role === 'user') {
       const startMs = Date.now();
       const result = await withRetry(() => generativeModel.generateContent(nonSystemMessages[0].content));
@@ -70,7 +72,6 @@ export class GeminiAdapter implements ProviderAdapter {
       return { text, usage, durationMs };
     }
 
-    // Multi-turn: use startChat with history, send the last message
     const history = nonSystemMessages.slice(0, -1).map(m => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content }],
