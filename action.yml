@@ -1,0 +1,49 @@
+name: 'Stepproof'
+description: 'Run regression tests for AI pipelines'
+branding:
+  icon: 'check-circle'
+  color: 'blue'
+inputs:
+  scenarios:
+    description: 'Path to scenario file or directory'
+    required: true
+    default: './scenarios/'
+  iterations:
+    description: 'Number of iterations per scenario'
+    required: false
+  format:
+    description: 'Output format: terminal, sarif, junit'
+    required: false
+    default: 'terminal'
+  node-version:
+    description: 'Node.js version'
+    required: false
+    default: '20'
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    # Run stepproof — terminal format (no file output)
+    - if: inputs.format == 'terminal'
+      run: npx stepproof run ${{ inputs.scenarios }} ${{ inputs.iterations && format('--iterations {0}', inputs.iterations) || '' }}
+      shell: bash
+
+    # Run stepproof — SARIF format (write to file for upload)
+    - if: inputs.format == 'sarif'
+      run: npx stepproof run ${{ inputs.scenarios }} ${{ inputs.iterations && format('--iterations {0}', inputs.iterations) || '' }} --format sarif --output stepproof-results.sarif
+      shell: bash
+
+    # Upload SARIF to GitHub Security tab
+    - if: inputs.format == 'sarif' && always()
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: stepproof-results.sarif
+        category: stepproof
+
+    # Run stepproof — JUnit format (write to stdout)
+    - if: inputs.format == 'junit'
+      run: npx stepproof run ${{ inputs.scenarios }} ${{ inputs.iterations && format('--iterations {0}', inputs.iterations) || '' }} --format junit
+      shell: bash

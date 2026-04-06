@@ -35,8 +35,14 @@ export class OpenAIAdapter {
             messages.push({ role: 'system', content: system });
         }
         messages.push({ role: 'user', content: prompt });
+        const startMs = Date.now();
         const response = await withRetry(() => this.client.chat.completions.create({ model: this.model, messages }));
-        return response.choices[0]?.message?.content ?? '';
+        const durationMs = Date.now() - startMs;
+        const text = response.choices[0]?.message?.content ?? '';
+        const usage = response.usage
+            ? { inputTokens: response.usage.prompt_tokens, outputTokens: response.usage.completion_tokens }
+            : undefined;
+        return { text, usage, durationMs };
     }
 }
 //# sourceMappingURL=openai.js.map

@@ -1,0 +1,1 @@
+{"response":"hello world","usage":{"inputTokens":100,"outputTokens":50},"durationMs":10,"timestamp":1775456734850,"provider":"anthropic","model":"claude-haiku-4-5-20251001"}

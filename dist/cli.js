@@ -1,17 +1,24 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
+import chalk from 'chalk';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { parseScenario } from './core/scenario-parser.js';
 import { runScenario } from './core/scenario-runner.js';
 import { writeJsonReport } from './reporters/json-reporter.js';
-import { printReport } from './reporters/terminal-reporter.js';
+import { printReport, formatComparison } from './reporters/terminal-reporter.js';
 import { formatSarif } from './reporters/sarif-reporter.js';
 import { formatJunit } from './reporters/junit-reporter.js';
 import * as fs from 'node:fs';
 import { guard, validate } from '@bilkobibitkov/preflight-license';
 import { runInit } from './commands/init.js';
+import { runView } from './commands/view.js';
+import { runHistory } from './commands/history.js';
+import { saveReport } from './commands/results-store.js';
 import { sendTelemetry } from './telemetry.js';
+import { saveBaseline, loadBaseline, compareWithBaseline, resetBaseline, listBaselines } from './baseline.js';
+import { clearCache } from './cache.js';
+import { runComparison, parseProviderSpecs } from './commands/compare.js';
 const CLI_VERSION = '0.2.21';
 /* ── Usage-based monetization (Preflight Suite — shared) ────────────── */
 const TOOL_NAME = 'stepproof';
@@ -135,7 +142,9 @@ Examples:
   stepproof init                                        scaffold a starter scenario
   stepproof run ./scenarios/first-test.yaml             run one scenario
   stepproof run ./scenarios/                            run all scenarios in a directory
-  stepproof run test.yaml --format sarif --output results.sarif  SARIF output for CI`);
+  stepproof run test.yaml --format sarif --output results.sarif  SARIF output for CI
+  stepproof view                                        open latest report in browser
+  stepproof history                                     list recent runs`);
 program
     .command('init [dir]')
     .description('Scaffold a starter scenario in ./scenarios/first-test.yaml')
@@ -166,6 +175,20 @@ program
     }
 });
 program
+    .command('view [scenario]')
+    .description('Open the latest HTML report in your browser')
+    .action(async (scenario) => {
+    runView(scenario);
+    await sendTelemetry({ command: 'view', success: true, version: CLI_VERSION, outcome: 'opened' });
+});
+program
+    .command('history [scenario]')
+    .description('List recent runs with pass/fail, date, duration')
+    .action(async (scenario) => {
+    runHistory(scenario);
+    await sendTelemetry({ command: 'history', success: true, version: CLI_VERSION, outcome: 'listed' });
+});
+program
     .command('run [scenario]')
     .description('Run a scenario YAML file and report pass rates per step')
     .option('-n, --iterations <number>', 'Number of iterations to run (overrides scenario file)', parseInt)
@@ -174,6 +197,8 @@ program
     .option('--quiet', 'Suppress terminal output (use with --output for CI)')
     .option('--format <format>', 'Output format: sarif, junit')
     .option('--report <format>', '(deprecated: use --format)')
+    .option('--no-baseline', 'Skip baseline comparison and saving')
+    .option('--no-cache', 'Disable LLM response caching')
     .action(async (scenarioPath, opts) => {
     // --report is deprecated; normalize to --format
     if (opts.report && !opts.format) {
@@ -245,25 +270,40 @@ program
     }
     let currentIteration = 0;
     const totalIterations = opts.iterations ?? scenario.iterations ?? 10;
+    const runOptions = {
+        iterations: opts.iterations,
+        noCache: !opts.cache,
+        cacheStats: undefined,
+        onIterationComplete: (iteration, total) => {
+            currentIteration = iteration;
+            if (!isQuiet) {
+                process.stdout.write(`\r  Completed iteration ${iteration}/${total}...`);
+                if (iteration === total) {
+                    process.stdout.write('\r' + ' '.repeat(50) + '\r');
+                }
+            }
+        },
+    };
     let report;
     try {
-        report = await runScenario(scenario, resolvedPath, {
-            iterations: opts.iterations,
-            onIterationComplete: (iteration, total) => {
-                currentIteration = iteration;
-                if (!isQuiet) {
-                    process.stdout.write(`\r  Completed iteration ${iteration}/${total}...`);
-                    if (iteration === total) {
-                        process.stdout.write('\r' + ' '.repeat(50) + '\r');
-                    }
-                }
-            },
-        });
+        report = await runScenario(scenario, resolvedPath, runOptions);
     }
     catch (e) {
         console.error(`\nError running scenario: ${e.message}`);
         await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'error', exit_code: 2, duration_ms: Date.now() - startMs, is_pro: isPro });
         process.exit(2);
+    }
+    // Baseline comparison
+    let baselineComparison;
+    let hasRegression = false;
+    if (opts.baseline) {
+        const baseline = loadBaseline(scenario.name);
+        if (baseline) {
+            baselineComparison = compareWithBaseline(report, baseline);
+            hasRegression = baselineComparison.hasRegression;
+        }
+        // Save current run as the new baseline
+        saveBaseline(scenario.name, report);
     }
     // Handle --format sarif / --format junit
     if (opts.format === 'sarif' || opts.format === 'junit') {
@@ -283,7 +323,11 @@ program
     }
     const reportPath = opts.json ? opts.output : undefined;
     if (!isQuiet) {
-        printReport(report, reportPath);
+        printReport(report, {
+            reportPath,
+            baselineComparison,
+            cacheStats: runOptions.cacheStats,
+        });
     }
     if (opts.json) {
         try {
@@ -293,14 +337,169 @@ program
             console.error(`Warning: Could not write JSON report: ${e.message}`);
         }
     }
+    // Save report to .stepproof/results/ for view/history commands
+    try {
+        const savedPath = saveReport(report);
+        if (!isQuiet) {
+            console.log(chalk.dim(`Results saved to: ${savedPath}`));
+            console.log(chalk.dim('Run `stepproof view` to open in browser'));
+        }
+    }
+    catch { /* degrade gracefully */ }
     // Track usage after successful run completion
     await trackUsageAfterRun();
+    // Exit 1 if regression detected
+    if (hasRegression) {
+        await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'regression', exit_code: 1, duration_ms: Date.now() - startMs, is_pro: isPro });
+        process.exit(1);
+    }
     // Exit 1 if any step below threshold — this is the CI gate
     if (!report.allPassed) {
         await sendTelemetry({ command: 'run', success: false, version: CLI_VERSION, outcome: 'fail', exit_code: 1, duration_ms: Date.now() - startMs, is_pro: isPro });
         process.exit(1);
     }
     await sendTelemetry({ command: 'run', success: true, version: CLI_VERSION, outcome: 'pass', exit_code: 0, duration_ms: Date.now() - startMs, is_pro: isPro });
+    process.exit(0);
+});
+/* ── Baseline subcommands ──────────────────────────────────────────── */
+const baselineCmd = program
+    .command('baseline')
+    .description('Manage baseline snapshots for regression detection');
+baselineCmd
+    .command('show [scenario]')
+    .description('Show current baselines (all or for a specific scenario)')
+    .action(async (scenarioName) => {
+    const baselines = listBaselines();
+    if (baselines.length === 0) {
+        console.log('\nNo baselines saved yet. Run `stepproof run` to create one.\n');
+        process.exit(0);
+    }
+    const filtered = scenarioName
+        ? baselines.filter(b => b.scenarioName.toLowerCase().includes(scenarioName.toLowerCase()))
+        : baselines;
+    if (filtered.length === 0) {
+        console.log(`\nNo baseline found for "${scenarioName}"\n`);
+        process.exit(0);
+    }
+    console.log('');
+    console.log(chalk.bold('Baselines'));
+    console.log(chalk.dim('─'.repeat(50)));
+    for (const b of filtered) {
+        console.log(`  ${chalk.bold(b.scenarioName)}`);
+        for (const step of b.report.steps) {
+            const pct = (step.passRate * 100).toFixed(1);
+            console.log(`    ${step.stepId}: ${pct}% (${step.passes}/${step.totalRuns})`);
+        }
+        console.log(chalk.dim(`    Recorded: ${b.report.completedAt}`));
+        console.log('');
+    }
+    await sendTelemetry({ command: 'baseline_show', success: true, version: CLI_VERSION, outcome: 'listed' });
+});
+baselineCmd
+    .command('reset [scenario]')
+    .description('Clear baselines (all or for a specific scenario)')
+    .action(async (scenarioName) => {
+    resetBaseline(scenarioName);
+    if (scenarioName) {
+        console.log(`\nBaseline cleared for "${scenarioName}"\n`);
+    }
+    else {
+        console.log('\nAll baselines cleared\n');
+    }
+    await sendTelemetry({ command: 'baseline_reset', success: true, version: CLI_VERSION, outcome: 'cleared' });
+});
+/* ── Cache subcommands ────────────────────────────────────────────── */
+const cacheCmd = program
+    .command('cache')
+    .description('Manage LLM response cache');
+cacheCmd
+    .command('clear')
+    .description('Delete all cached LLM responses')
+    .action(async () => {
+    const count = clearCache();
+    console.log(`\nCleared ${count} cached response${count === 1 ? '' : 's'}\n`);
+    await sendTelemetry({ command: 'cache_clear', success: true, version: CLI_VERSION, outcome: 'cleared' });
+});
+/* ── Compare command ──────────────────────────────────────────────── */
+program
+    .command('compare <scenario>')
+    .description('Run a scenario against multiple providers and compare results')
+    .requiredOption('--providers <list>', 'Comma-separated provider:model pairs (e.g. anthropic:claude-sonnet-4-6,openai:gpt-4o)')
+    .option('-n, --iterations <number>', 'Number of iterations per provider', parseInt)
+    .option('--quiet', 'Suppress progress output')
+    .action(async (scenarioPath, opts) => {
+    const isPro = isProUser();
+    const startMs = Date.now();
+    if (!checkUsageLimit()) {
+        await sendTelemetry({ command: 'compare', success: false, version: CLI_VERSION, outcome: 'rate_limited', exit_code: 1, duration_ms: Date.now() - startMs, is_pro: isPro });
+        process.exit(1);
+    }
+    let providerSpecs;
+    try {
+        providerSpecs = parseProviderSpecs(opts.providers);
+    }
+    catch (e) {
+        console.error(`\nError: ${e.message}\n`);
+        process.exit(2);
+    }
+    if (providerSpecs.length < 2) {
+        console.error('\nError: --providers must specify at least 2 provider:model pairs\n');
+        process.exit(2);
+    }
+    const resolvedPath = path.resolve(process.cwd(), scenarioPath);
+    try {
+        const stat = fs.statSync(resolvedPath);
+        if (stat.isDirectory()) {
+            console.error(`\nError: "${scenarioPath}" is a directory. Specify a single scenario file.\n`);
+            process.exit(2);
+        }
+    }
+    catch (statErr) {
+        if (statErr.code === 'ENOENT') {
+            console.error(`\nError: Scenario not found: ${resolvedPath}\n`);
+            process.exit(2);
+        }
+    }
+    let scenario;
+    try {
+        scenario = parseScenario(resolvedPath);
+    }
+    catch (e) {
+        console.error(`\nError parsing scenario: ${e.message}`);
+        process.exit(2);
+    }
+    const iterations = opts.iterations ?? scenario.iterations ?? 10;
+    if (!opts.quiet) {
+        console.log(`\nComparing ${providerSpecs.length} providers on: ${scenario.name}`);
+        console.log(`Iterations per provider: ${iterations}\n`);
+    }
+    let comparisonReport;
+    try {
+        comparisonReport = await runComparison(scenario, resolvedPath, providerSpecs, iterations, {
+            quiet: opts.quiet,
+            onProviderStart: (provider, model) => {
+                if (!opts.quiet) {
+                    console.log(`  Running ${provider}:${model}...`);
+                }
+            },
+            onIterationComplete: (provider, iteration, total) => {
+                if (!opts.quiet) {
+                    process.stdout.write(`\r    ${provider}: iteration ${iteration}/${total}...`);
+                    if (iteration === total) {
+                        process.stdout.write('\r' + ' '.repeat(60) + '\r');
+                    }
+                }
+            },
+        });
+    }
+    catch (e) {
+        console.error(`\nError running comparison: ${e.message}`);
+        await sendTelemetry({ command: 'compare', success: false, version: CLI_VERSION, outcome: 'error', exit_code: 2, duration_ms: Date.now() - startMs, is_pro: isPro });
+        process.exit(2);
+    }
+    console.log(formatComparison(comparisonReport));
+    await trackUsageAfterRun();
+    await sendTelemetry({ command: 'compare', success: true, version: CLI_VERSION, outcome: 'compared', exit_code: 0, duration_ms: Date.now() - startMs, is_pro: isPro });
     process.exit(0);
 });
 program.action(() => {

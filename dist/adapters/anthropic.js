@@ -30,17 +30,24 @@ export class AnthropicAdapter {
         this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     }
     async call(prompt, system) {
+        const startMs = Date.now();
         const response = await withRetry(() => this.client.messages.create({
             model: this.model,
             max_tokens: 1024,
             ...(system && { system }),
             messages: [{ role: 'user', content: prompt }],
         }));
+        const durationMs = Date.now() - startMs;
         const content = response.content[0];
-        if (content?.type === 'text') {
-            return content.text;
-        }
-        return '';
+        const text = content?.type === 'text' ? content.text : '';
+        return {
+            text,
+            usage: {
+                inputTokens: response.usage.input_tokens,
+                outputTokens: response.usage.output_tokens,
+            },
+            durationMs,
+        };
     }
 }
 //# sourceMappingURL=anthropic.js.map

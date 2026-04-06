@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { ProviderAdapter } from './base.js';
+import type { AdapterResponse, ProviderAdapter } from './base.js';
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
@@ -33,7 +33,8 @@ export class AnthropicAdapter implements ProviderAdapter {
     this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   }
 
-  async call(prompt: string, system?: string): Promise<string> {
+  async call(prompt: string, system?: string): Promise<AdapterResponse> {
+    const startMs = Date.now();
     const response = await withRetry(() =>
       this.client.messages.create({
         model: this.model,
@@ -42,12 +43,18 @@ export class AnthropicAdapter implements ProviderAdapter {
         messages: [{ role: 'user', content: prompt }],
       })
     );
+    const durationMs = Date.now() - startMs;
 
     const content = response.content[0];
-    if (content?.type === 'text') {
-      return content.text;
-    }
+    const text = content?.type === 'text' ? content.text : '';
 
-    return '';
+    return {
+      text,
+      usage: {
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+      },
+      durationMs,
+    };
   }
 }

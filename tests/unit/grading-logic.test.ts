@@ -9,6 +9,12 @@ vi.mock('../../src/adapters/index.js', () => ({
   getAdapter: vi.fn(),
 }));
 
+// Disable cache so every iteration hits the mock adapter
+vi.mock('../../src/cache.js', () => ({
+  getCached: () => null,
+  setCache: () => {},
+}));
+
 import { getAdapter } from '../../src/adapters/index.js';
 import { runScenario } from '../../src/core/scenario-runner.js';
 import type { Scenario } from '../../src/core/types.js';
@@ -42,7 +48,7 @@ describe('pass rate — boundary conditions', () => {
     (getAdapter as ReturnType<typeof vi.fn>).mockReturnValue({
       call: async () => {
         callCount++;
-        return callCount <= 4 ? 'hello world' : 'goodbye';
+        return { text: callCount <= 4 ? 'hello world' : 'goodbye', durationMs: 10 };
       },
     });
 
@@ -61,7 +67,7 @@ describe('pass rate — boundary conditions', () => {
     (getAdapter as ReturnType<typeof vi.fn>).mockReturnValue({
       call: async () => {
         callCount++;
-        return callCount <= 3 ? 'hello world' : 'goodbye';
+        return { text: callCount <= 3 ? 'hello world' : 'goodbye', durationMs: 10 };
       },
     });
 
@@ -80,7 +86,7 @@ describe('pass rate — boundary conditions', () => {
     (getAdapter as ReturnType<typeof vi.fn>).mockReturnValue({
       call: async () => {
         callCount++;
-        return callCount < 10 ? 'hello world' : 'goodbye';
+        return { text: callCount < 10 ? 'hello world' : 'goodbye', durationMs: 10 };
       },
     });
 

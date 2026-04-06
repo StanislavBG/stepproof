@@ -7,6 +7,12 @@ vi.mock('../../src/adapters/index.js', () => ({
   getAdapter: vi.fn(),
 }));
 
+// Disable cache so every iteration hits the mock adapter
+vi.mock('../../src/cache.js', () => ({
+  getCached: () => null,
+  setCache: () => {},
+}));
+
 import { getAdapter } from '../../src/adapters/index.js';
 const mockGetAdapter = vi.mocked(getAdapter);
 
@@ -31,9 +37,13 @@ function makeScenario(overrides: Partial<Scenario> = {}): Scenario {
   };
 }
 
+function adapterResponse(text: string) {
+  return { text, durationMs: 10, usage: { inputTokens: 100, outputTokens: 50 } };
+}
+
 function mockAdapter(response: string) {
   mockGetAdapter.mockReturnValue({
-    call: vi.fn().mockResolvedValue(response),
+    call: vi.fn().mockResolvedValue(adapterResponse(response)),
   } as any);
 }
 
@@ -109,7 +119,7 @@ describe('runScenario — pass/fail aggregation', () => {
       call: vi.fn().mockImplementation(async () => {
         callCount++;
         // Only 1 of 5 iterations returns "hello" (20% pass rate, threshold 0.8)
-        return callCount === 1 ? 'hello world' : 'goodbye world';
+        return adapterResponse(callCount === 1 ? 'hello world' : 'goodbye world');
       }),
     } as any);
 
@@ -177,7 +187,7 @@ describe('runScenario — adapter error handling', () => {
       call: vi.fn().mockImplementation(async () => {
         callCount++;
         if (callCount === 1) throw new Error('transient error');
-        return 'hello world';
+        return adapterResponse('hello world');
       }),
     } as any);
 
@@ -213,7 +223,7 @@ describe('runScenario — report metadata', () => {
     mockGetAdapter.mockReturnValue({
       call: vi.fn().mockImplementation(async () => {
         callCount++;
-        return callCount <= 3 ? 'hello world' : 'no match';
+        return adapterResponse(callCount <= 3 ? 'hello world' : 'no match');
       }),
     } as any);
 
@@ -233,7 +243,7 @@ describe('runScenario — multi-step scenarios', () => {
     mockGetAdapter.mockImplementation((provider: string, model: string) => ({
       call: vi.fn().mockImplementation(async (prompt: string) => {
         calls.push(prompt);
-        return 'hello world';
+        return adapterResponse('hello world');
       }),
     } as any));
 
