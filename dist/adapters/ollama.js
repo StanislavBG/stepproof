@@ -26,14 +26,24 @@ export class OllamaAdapter {
         this.baseUrl = process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434';
     }
     async call(prompt, system) {
+        return this.chat([{ role: 'user', content: prompt }], system);
+    }
+    async chat(messages, system) {
+        // Build Ollama chat API messages array
+        const apiMessages = [];
+        if (system) {
+            apiMessages.push({ role: 'system', content: system });
+        }
+        for (const msg of messages) {
+            apiMessages.push({ role: msg.role, content: msg.content });
+        }
         const startMs = Date.now();
-        const response = await withRetry(() => fetch(`${this.baseUrl}/api/generate`, {
+        const response = await withRetry(() => fetch(`${this.baseUrl}/api/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 model: this.model,
-                prompt,
-                ...(system && { system }),
+                messages: apiMessages,
                 stream: false,
             }),
         }));
@@ -45,7 +55,7 @@ export class OllamaAdapter {
         const usage = data.prompt_eval_count != null && data.eval_count != null
             ? { inputTokens: data.prompt_eval_count, outputTokens: data.eval_count }
             : undefined;
-        return { text: data.response, usage, durationMs };
+        return { text: data.message.content, usage, durationMs };
     }
 }
 //# sourceMappingURL=ollama.js.map

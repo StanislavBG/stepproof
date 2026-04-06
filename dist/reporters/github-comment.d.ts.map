@@ -1,0 +1,1 @@
+{"version":3,"file":"github-comment.d.ts","sourceRoot":"","sources":["../../src/reporters/github-comment.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,cAAc,EAAe,MAAM,kBAAkB,CAAC;AACpE,OAAO,KAAK,EAAE,kBAAkB,EAAkB,MAAM,gBAAgB,CAAC;AA6BzE;;;GAGG;AACH,wBAAgB,eAAe,CAC7B,MAAM,EAAE,cAAc,EACtB,kBAAkB,CAAC,EAAE,kBAAkB,GACtC,MAAM,CA0FR"}

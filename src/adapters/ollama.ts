@@ -1,4 +1,4 @@
-import type { AdapterResponse, ProviderAdapter } from './base.js';
+import type { AdapterResponse, ChatMessage, ProviderAdapter } from './base.js';
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
@@ -20,8 +20,14 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   throw lastError;
 }
 
-interface OllamaResponse {
+interface OllamaGenerateResponse {
   response: string;
+  prompt_eval_count?: number;
+  eval_count?: number;
+}
+
+interface OllamaChatResponse {
+  message: { role: string; content: string };
   prompt_eval_count?: number;
   eval_count?: number;
 }
@@ -36,15 +42,27 @@ export class OllamaAdapter implements ProviderAdapter {
   }
 
   async call(prompt: string, system?: string): Promise<AdapterResponse> {
+    return this.chat([{ role: 'user', content: prompt }], system);
+  }
+
+  async chat(messages: ChatMessage[], system?: string): Promise<AdapterResponse> {
+    // Build Ollama chat API messages array
+    const apiMessages: Array<{ role: string; content: string }> = [];
+    if (system) {
+      apiMessages.push({ role: 'system', content: system });
+    }
+    for (const msg of messages) {
+      apiMessages.push({ role: msg.role, content: msg.content });
+    }
+
     const startMs = Date.now();
     const response = await withRetry(() =>
-      fetch(`${this.baseUrl}/api/generate`, {
+      fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: this.model,
-          prompt,
-          ...(system && { system }),
+          messages: apiMessages,
           stream: false,
         }),
       })
@@ -58,12 +76,12 @@ export class OllamaAdapter implements ProviderAdapter {
       );
     }
 
-    const data = (await response.json()) as OllamaResponse;
+    const data = (await response.json()) as OllamaChatResponse;
     const usage =
       data.prompt_eval_count != null && data.eval_count != null
         ? { inputTokens: data.prompt_eval_count, outputTokens: data.eval_count }
         : undefined;
 
-    return { text: data.response, usage, durationMs };
+    return { text: data.message.content, usage, durationMs };
   }
 }

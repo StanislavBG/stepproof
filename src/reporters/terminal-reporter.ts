@@ -36,12 +36,41 @@ export function printReport(report: ScenarioReport, reportPathOrOpts?: string | 
   console.log(`${chalk.bold('Iterations:')} ${iterations}`);
   console.log(`${chalk.bold('Duration:')} ${formatDuration(durationMs)}`);
 
+  if (report.dataset) {
+    console.log(`${chalk.bold('Dataset:')} ${report.dataset.path} (${report.dataset.totalRows} rows)`);
+  }
+
   if (opts.cacheStats && (opts.cacheStats.hits > 0 || opts.cacheStats.misses > 0)) {
     console.log(`${chalk.bold('Cache:')} ${opts.cacheStats.hits} hits, ${opts.cacheStats.misses} misses`);
   }
 
   console.log('');
 
+  // Dataset mode: show per-row results
+  if (report.dataset) {
+    for (const row of report.dataset.rowSummaries) {
+      const previewParts = Object.entries(row.rowPreview)
+        .map(([k, v]) => `${k}="${v.length > 30 ? v.slice(0, 30) + '...' : v}"`)
+        .join(', ');
+      console.log(chalk.bold(`  Row ${row.rowIndex + 1}`) + chalk.dim(` (${previewParts}):`));
+
+      for (const sr of row.stepResults) {
+        const icon = sr.passed ? chalk.green('✓') : chalk.red('✗');
+        const pct = (sr.passRate * 100).toFixed(0);
+        console.log(`    step: ${sr.stepId}  ${icon} ${pct}%`);
+      }
+    }
+
+    console.log('');
+    console.log(chalk.dim('─'.repeat(50)));
+    const rowPassPct = ((report.dataset.rowsPassed / report.dataset.totalRows) * 100).toFixed(0);
+    console.log(
+      `${chalk.bold('Overall:')} ${report.dataset.rowsPassed}/${report.dataset.totalRows} rows passed all steps (${rowPassPct}%)`
+    );
+    console.log('');
+  }
+
+  // Aggregate step summaries (shown in both modes)
   for (const step of steps) {
     printStepSummary(step, iterations, baselineMap.get(step.stepId));
   }
@@ -97,8 +126,13 @@ function printStepSummary(step: StepSummary, iterations: number, baseline?: Step
     ? chalk.dim(` — avg ${avgSec}s, ${avgCost}/call, total ${totalCost}`)
     : chalk.dim(` — avg ${avgSec}s`);
 
+  // Retry indicator
+  const retryStr = step.retriedCount
+    ? chalk.yellow(` — ${step.retriedCount} retried`)
+    : '';
+
   console.log(`  ${statusIcon} ${chalk.bold(stepId)}${metricsSuffix}`);
-  console.log(`    ${renderBar(passes, totalRuns)} ${passes}/${totalRuns} iterations`);
+  console.log(`    ${renderBar(passes, totalRuns)} ${passes}/${totalRuns} iterations${retryStr}`);
   console.log(
     `    Pass rate: ${rateColor(`${pct}%`)}  ${chalk.dim(`(threshold: ${threshold}%)`)}${baselineStr}`
   );

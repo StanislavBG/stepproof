@@ -16,9 +16,13 @@ import { runView } from './commands/view.js';
 import { runHistory } from './commands/history.js';
 import { saveReport } from './commands/results-store.js';
 import { sendTelemetry } from './telemetry.js';
-import { saveBaseline, loadBaseline, compareWithBaseline, resetBaseline, listBaselines } from './baseline.js';
+import { saveBaseline, loadBaseline, compareWithBaseline, resetBaseline, listBaselines, loadBaselineYaml } from './baseline.js';
+import { formatPRComment } from './reporters/github-comment.js';
+import { runDiff } from './commands/diff.js';
 import { clearCache } from './cache.js';
 import { runComparison, parseProviderSpecs } from './commands/compare.js';
+import { loadDataset } from './dataset.js';
+import { startWatch } from './commands/watch.js';
 
 const CLI_VERSION = '0.2.21';
 
@@ -225,6 +229,7 @@ program
   .option('--report <format>', '(deprecated: use --format)')
   .option('--no-baseline', 'Skip baseline comparison and saving')
   .option('--no-cache', 'Disable LLM response caching')
+  .option('--dataset <path>', 'CSV file with input rows — run scenario once per row')
   .action(async (scenarioPath: string | undefined, opts: {
     iterations?: number;
     output: string;
@@ -234,6 +239,7 @@ program
     report?: string;
     baseline: boolean;
     cache: boolean;
+    dataset?: string;
   }) => {
     // --report is deprecated; normalize to --format
     if (opts.report && !opts.format) {
@@ -241,8 +247,8 @@ program
       opts.format = opts.report;
     }
 
-    if (opts.format && opts.format !== 'sarif' && opts.format !== 'junit') {
-      console.error(`\nError: --format must be "sarif" or "junit", got "${opts.format}"`);
+    if (opts.format && opts.format !== 'sarif' && opts.format !== 'junit' && opts.format !== 'github') {
+      console.error(`\nError: --format must be "sarif", "junit", or "github", got "${opts.format}"`);
       process.exit(2);
     }
 
@@ -250,6 +256,12 @@ program
     if (opts.format === 'sarif' || opts.format === 'junit') {
       guard('team', { feature: `--format ${opts.format}` });
     }
+
+    // Read scenario YAML for baseline storage (before any mutation)
+    let scenarioYaml: string | undefined;
+    try {
+      scenarioYaml = fs.readFileSync(path.resolve(process.cwd(), scenarioPath!), 'utf-8');
+    } catch { /* will fail later in parseScenario */ }
 
     // Capture pro status once — used for telemetry throughout this command
     const isPro = isProUser();
@@ -313,6 +325,21 @@ program
       }
     }
 
+    // Load dataset if provided
+    let dataset: Array<Record<string, string>> | undefined;
+    if (opts.dataset) {
+      const datasetPath = path.resolve(process.cwd(), opts.dataset);
+      try {
+        dataset = loadDataset(datasetPath);
+        if (!isQuiet) {
+          console.log(`Dataset: ${opts.dataset} (${dataset.length} rows)`);
+        }
+      } catch (e) {
+        console.error(`\nError loading dataset: ${(e as Error).message}`);
+        process.exit(2);
+      }
+    }
+
     let currentIteration = 0;
     const totalIterations = opts.iterations ?? scenario.iterations ?? 10;
 
@@ -320,6 +347,8 @@ program
       iterations: opts.iterations,
       noCache: !opts.cache,
       cacheStats: undefined,
+      dataset,
+      datasetPath: opts.dataset,
       onIterationComplete: (iteration: number, total: number) => {
         currentIteration = iteration;
         if (!isQuiet) {
@@ -349,11 +378,11 @@ program
         baselineComparison = compareWithBaseline(report, baseline);
         hasRegression = baselineComparison.hasRegression;
       }
-      // Save current run as the new baseline
-      saveBaseline(scenario.name, report);
+      // Save current run as the new baseline (including scenario YAML for diff)
+      saveBaseline(scenario.name, report, scenarioYaml);
     }
 
-    // Handle --format sarif / --format junit
+    // Handle --format sarif / --format junit / --format github
     if (opts.format === 'sarif' || opts.format === 'junit') {
       const formatted = opts.format === 'sarif' ? formatSarif(report) : formatJunit(report);
       const hasExplicitOutput = process.argv.includes('--output') || process.argv.includes('-o');
@@ -365,6 +394,20 @@ program
         }
       } else {
         process.stdout.write(formatted + '\n');
+      }
+    }
+
+    if (opts.format === 'github') {
+      const markdown = formatPRComment(report, baselineComparison);
+      const hasExplicitOutput = process.argv.includes('--output') || process.argv.includes('-o');
+      if (hasExplicitOutput) {
+        try {
+          fs.writeFileSync(opts.output, markdown, 'utf-8');
+        } catch (e) {
+          console.error(`Warning: Could not write GitHub comment: ${(e as Error).message}`);
+        }
+      } else {
+        process.stdout.write(markdown + '\n');
       }
     }
 
@@ -412,6 +455,27 @@ program
 
     await sendTelemetry({ command: 'run', success: true, version: CLI_VERSION, outcome: 'pass', exit_code: 0, duration_ms: Date.now() - startMs, is_pro: isPro });
     process.exit(0);
+  });
+
+/* ── Watch command ────────────────────────────────────────────────── */
+
+program
+  .command('watch <scenario>')
+  .description('Watch a scenario file and re-run on changes')
+  .option('-n, --iterations <number>', 'Number of iterations to run', parseInt)
+  .option('--no-cache', 'Disable LLM response caching')
+  .option('--dataset <path>', 'CSV file with input rows — run scenario once per row')
+  .action(async (scenarioPath: string, opts: {
+    iterations?: number;
+    cache: boolean;
+    dataset?: string;
+  }) => {
+    await sendTelemetry({ command: 'watch', success: true, version: CLI_VERSION, outcome: 'started' });
+    startWatch(scenarioPath, {
+      iterations: opts.iterations,
+      noCache: !opts.cache,
+      dataset: opts.dataset,
+    });
   });
 
 /* ── Baseline subcommands ──────────────────────────────────────────── */
@@ -575,6 +639,16 @@ program
     await trackUsageAfterRun();
     await sendTelemetry({ command: 'compare', success: true, version: CLI_VERSION, outcome: 'compared', exit_code: 0, duration_ms: Date.now() - startMs, is_pro: isPro });
     process.exit(0);
+  });
+
+/* ── Diff command ─────────────────────────────────────────────────── */
+
+program
+  .command('diff <scenario>')
+  .description('Show what changed in a scenario since the last baseline')
+  .action(async (scenarioPath: string) => {
+    runDiff(scenarioPath);
+    await sendTelemetry({ command: 'diff', success: true, version: CLI_VERSION, outcome: 'shown' });
   });
 
 program.action(() => {

@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { AdapterResponse, ProviderAdapter } from './base.js';
+import type { AdapterResponse, ChatMessage, ProviderAdapter } from './base.js';
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
@@ -34,16 +34,22 @@ export class OpenAIAdapter implements ProviderAdapter {
   }
 
   async call(prompt: string, system?: string): Promise<AdapterResponse> {
-    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+    return this.chat([{ role: 'user', content: prompt }], system);
+  }
+
+  async chat(messages: ChatMessage[], system?: string): Promise<AdapterResponse> {
+    const apiMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
 
     if (system) {
-      messages.push({ role: 'system', content: system });
+      apiMessages.push({ role: 'system', content: system });
     }
-    messages.push({ role: 'user', content: prompt });
+    for (const msg of messages) {
+      apiMessages.push({ role: msg.role, content: msg.content });
+    }
 
     const startMs = Date.now();
     const response = await withRetry(() =>
-      this.client.chat.completions.create({ model: this.model, messages })
+      this.client.chat.completions.create({ model: this.model, messages: apiMessages })
     );
     const durationMs = Date.now() - startMs;
 

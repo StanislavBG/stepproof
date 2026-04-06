@@ -16,6 +16,11 @@ export type AssertionType =
   | 'cost_under'
   | 'latency_under';
 
+export interface ConversationTurn {
+  role: 'user' | 'assistant' | 'system';
+  content?: string;  // undefined = LLM generates this turn
+}
+
 export interface Assertion {
   type: AssertionType;
   /** For contains, not_contains, regex, starts_with, ends_with, cost_under, latency_under */
@@ -44,12 +49,22 @@ export interface Step {
   id: string;
   provider: Provider;
   model: string;
-  /** Prompt template. Use {{variable}} for variables, {{step_id.output}} for prior step outputs. */
-  prompt: string;
+  /** Prompt template. Use {{variable}} for variables, {{step_id.output}} for prior step outputs. Required unless conversation is set. */
+  prompt?: string;
   /** Optional system prompt */
   system?: string;
+  /** Multi-turn conversation. The last assistant turn without content is where the LLM responds. */
+  conversation?: ConversationTurn[];
+  /** Step IDs this step depends on. Steps without dependencies run in parallel. */
+  depends_on?: string[];
+  /** Condition string — if false, step is skipped. Supports contains, not_contains, matches operators. */
+  if?: string;
   /** Minimum pass rate threshold (0.0-1.0). Default: 0.8 */
   min_pass_rate?: number;
+  /** Retry up to N times on assertion failure (0 = no retries). Default: 0 */
+  retry?: number;
+  /** Delay in ms between retries. Default: 1000 */
+  retry_delay?: number;
   assertions: Assertion[];
 }
 
@@ -73,6 +88,11 @@ export interface StepResult {
   iteration: number;
   output: string;
   passed: boolean;
+  skipped?: boolean;
+  /** Number of retries used before final result (0 = passed on first try) */
+  retriesUsed?: number;
+  /** Dataset row index (0-based) when running in dataset mode */
+  datasetRow?: number;
   assertionResults: AssertionResult[];
   error?: string;
   durationMs: number;
@@ -92,6 +112,17 @@ export interface StepSummary {
   avgDurationMs: number;
   totalCostUsd: number;
   avgCostUsd: number;
+  /** Number of step results that required at least one retry */
+  retriedCount?: number;
+}
+
+/** Per-row result summary when running in dataset mode */
+export interface DatasetRowSummary {
+  rowIndex: number;
+  /** First few columns from the row for display */
+  rowPreview: Record<string, string>;
+  allStepsPassed: boolean;
+  stepResults: Array<{ stepId: string; passed: boolean; passRate: number }>;
 }
 
 export interface ScenarioReport {
@@ -103,4 +134,11 @@ export interface ScenarioReport {
   steps: StepSummary[];
   allPassed: boolean;
   results: StepResult[];
+  /** Dataset mode info — present when run with --dataset */
+  dataset?: {
+    path: string;
+    totalRows: number;
+    rowsPassed: number;
+    rowSummaries: DatasetRowSummary[];
+  };
 }

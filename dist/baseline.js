@@ -8,9 +8,26 @@ function toFilename(scenarioName) {
 function baselinePath(scenarioName) {
     return path.join(BASELINE_DIR, `${toFilename(scenarioName)}.json`);
 }
-export function saveBaseline(scenarioName, report) {
+function baselineYamlPath(scenarioName) {
+    return path.join(BASELINE_DIR, `${toFilename(scenarioName)}.yaml`);
+}
+export function saveBaseline(scenarioName, report, scenarioYaml) {
     fs.mkdirSync(BASELINE_DIR, { recursive: true });
     fs.writeFileSync(baselinePath(scenarioName), JSON.stringify(report, null, 2), 'utf-8');
+    if (scenarioYaml !== undefined) {
+        fs.writeFileSync(baselineYamlPath(scenarioName), scenarioYaml, 'utf-8');
+    }
+}
+export function loadBaselineYaml(scenarioName) {
+    const fp = baselineYamlPath(scenarioName);
+    try {
+        if (!fs.existsSync(fp))
+            return null;
+        return fs.readFileSync(fp, 'utf-8');
+    }
+    catch {
+        return null;
+    }
 }
 export function loadBaseline(scenarioName) {
     const fp = baselinePath(scenarioName);

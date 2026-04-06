@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { AdapterResponse, ProviderAdapter } from './base.js';
+import type { AdapterResponse, ChatMessage, ProviderAdapter } from './base.js';
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
@@ -34,13 +34,29 @@ export class AnthropicAdapter implements ProviderAdapter {
   }
 
   async call(prompt: string, system?: string): Promise<AdapterResponse> {
+    return this.chat([{ role: 'user', content: prompt }], system);
+  }
+
+  async chat(messages: ChatMessage[], system?: string): Promise<AdapterResponse> {
+    // Anthropic API requires alternating user/assistant messages.
+    // System messages are passed via the top-level system param.
+    const apiMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    for (const msg of messages) {
+      if (msg.role === 'system') {
+        // Fold into system param — Anthropic doesn't support system in messages array
+        system = system ? `${system}\n\n${msg.content}` : msg.content;
+      } else {
+        apiMessages.push({ role: msg.role, content: msg.content });
+      }
+    }
+
     const startMs = Date.now();
     const response = await withRetry(() =>
       this.client.messages.create({
         model: this.model,
         max_tokens: 1024,
         ...(system && { system }),
-        messages: [{ role: 'user', content: prompt }],
+        messages: apiMessages,
       })
     );
     const durationMs = Date.now() - startMs;

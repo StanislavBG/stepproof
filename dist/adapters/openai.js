@@ -30,13 +30,18 @@ export class OpenAIAdapter {
         this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     }
     async call(prompt, system) {
-        const messages = [];
+        return this.chat([{ role: 'user', content: prompt }], system);
+    }
+    async chat(messages, system) {
+        const apiMessages = [];
         if (system) {
-            messages.push({ role: 'system', content: system });
+            apiMessages.push({ role: 'system', content: system });
         }
-        messages.push({ role: 'user', content: prompt });
+        for (const msg of messages) {
+            apiMessages.push({ role: msg.role, content: msg.content });
+        }
         const startMs = Date.now();
-        const response = await withRetry(() => this.client.chat.completions.create({ model: this.model, messages }));
+        const response = await withRetry(() => this.client.chat.completions.create({ model: this.model, messages: apiMessages }));
         const durationMs = Date.now() - startMs;
         const text = response.choices[0]?.message?.content ?? '';
         const usage = response.usage

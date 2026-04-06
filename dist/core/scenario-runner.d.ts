@@ -14,6 +14,10 @@ export interface RunOptions {
     noCache?: boolean;
     /** Populated after run — cache hit/miss stats */
     cacheStats?: CacheStats;
+    /** Dataset rows — each row's columns become variables (merged with scenario variables, row wins) */
+    dataset?: Array<Record<string, string>>;
+    /** Original dataset file path (for reporting) */
+    datasetPath?: string;
 }
 export declare function runScenario(scenario: Scenario, scenarioFilePath: string, options?: RunOptions): Promise<ScenarioReport>;
 //# sourceMappingURL=scenario-runner.d.ts.map

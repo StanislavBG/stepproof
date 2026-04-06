@@ -10,7 +10,8 @@ export interface BaselineComparison {
     steps: StepComparison[];
     hasRegression: boolean;
 }
-export declare function saveBaseline(scenarioName: string, report: ScenarioReport): void;
+export declare function saveBaseline(scenarioName: string, report: ScenarioReport, scenarioYaml?: string): void;
+export declare function loadBaselineYaml(scenarioName: string): string | null;
 export declare function loadBaseline(scenarioName: string): ScenarioReport | null;
 export declare function compareWithBaseline(current: ScenarioReport, baseline: ScenarioReport): BaselineComparison;
 export declare function resetBaseline(scenarioName?: string): void;

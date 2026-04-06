@@ -15,6 +15,10 @@ inputs:
     description: 'Output format: terminal, sarif, junit'
     required: false
     default: 'terminal'
+  comment:
+    description: 'Post results as a PR comment (only in pull_request context)'
+    required: false
+    default: 'true'
   node-version:
     description: 'Node.js version'
     required: false
@@ -47,3 +51,14 @@ runs:
     - if: inputs.format == 'junit'
       run: npx stepproof run ${{ inputs.scenarios }} ${{ inputs.iterations && format('--iterations {0}', inputs.iterations) || '' }} --format junit
       shell: bash
+
+    # Generate GitHub comment markdown and post to PR
+    - if: inputs.comment == 'true' && github.event_name == 'pull_request'
+      run: |
+        npx stepproof run ${{ inputs.scenarios }} ${{ inputs.iterations && format('--iterations {0}', inputs.iterations) || '' }} --format github --output .stepproof/comment.md || true
+        bash ${{ github.action_path }}/action-comment.sh
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
